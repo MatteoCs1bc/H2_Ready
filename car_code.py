@@ -1,120 +1,108 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="DSS Mobilità Comuni", page_icon="🚗", layout="wide")
-st.title("🚗 DSS Comuni: Supporto Decisionale")
+st.title("🚗 DSS Comuni: Analisi Automatica Flotta")
 
-# --- 1. CARICAMENTO ---
-uploaded_file = st.sidebar.file_uploader("Carica il file Excel", type=["xlsx"])
+# --- 1. CARICAMENTO AUTOMATICO DA REPOSITORY ---
+# Inserisci qui il nome esatto del tuo file su GitHub
+NOME_FILE_EXCEL = "Comparison H2 elc FF.xlsx" 
 
-if uploaded_file:
-    try:
-        xl = pd.ExcelFile(uploaded_file)
+@st.cache_data
+def load_data_from_git(filename):
+    if os.path.exists(filename):
+        return pd.ExcelFile(filename)
+    return None
+
+xl = load_data_from_git(NOME_FILE_EXCEL)
+
+if xl is None:
+    st.error(f"❌ Non ho trovato il file '{NOME_FILE_EXCEL}' nel repository.")
+    st.info("Assicurati di aver caricato il file su GitHub nella stessa cartella di questo script Python.")
+    st.stop()
+
+try:
+    # --- 2. SELEZIONE CATEGORIA ---
+    fogli_disponibili = xl.sheet_names
+    categoria_utente = st.sidebar.selectbox("Seleziona Flotta", ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"])
+    
+    # Cerchiamo il foglio ignorando maiuscole/minuscole
+    nome_foglio = next((f for f in fogli_disponibili if f.upper() == categoria_utente), fogli_disponibili[0])
+    
+    # Leggiamo tutto il foglio senza header per mappare le celle
+    df_raw = pd.read_excel(xl, sheet_name=nome_foglio, header=None)
+
+    # --- 3. RICERCA ANCORA "BENZINA" (Tra riga 1 e 15) ---
+    anchor_row = None
+    for i in range(min(15, len(df_raw))):
+        # Cerchiamo nella colonna B (indice 1)
+        val = str(df_raw.iloc[i, 1]).strip()
+        if val.lower() == "benzina":
+            anchor_row = i
+            break
+
+    if anchor_row is None:
+        st.warning(f"⚠️ Non trovo 'Benzina' nella colonna B del foglio {nome_foglio}.")
+        st.write("Ecco cosa vedo nelle prime righe:")
+        st.dataframe(df_raw.iloc[:10, :5]) # Mostra anteprima per debug
+        st.stop()
+
+    # --- 4. ESTRAZIONE DATI ---
+    # Tecnologia (B=1), Consumo (E=4), WtT (N=13), TtW (O=14), CAPEX_A (X=23), Maint_A (Y=24)
+    # Regola questi indici se la tabella slitta!
+    df_clean = df_raw.iloc[anchor_row:anchor_row+7, [1, 4, 13, 14, 23, 24]].copy()
+    df_clean.columns = ["Tecnologia", "Consumo_kWh_km", "WtT", "TtW", "CAPEX_Anno", "Maint_Anno"]
+
+    def to_num(x):
+        if pd.isna(x): return 0.0
+        s = str(x).replace('€', '').replace(' ', '').replace(',', '.')
+        try: return float(s)
+        except: return 0.0
+
+    for c in df_clean.columns[1:]:
+        df_clean[c] = df_clean[c].apply(to_num)
+
+    # --- 5. COSTI FUEL (C20:C26) ---
+    df_fuel = pd.read_excel(xl, sheet_name=nome_foglio, usecols="B:C", skiprows=19, nrows=7, header=None)
+    
+    st.sidebar.header("⚡ Costi Carburante [€/kWh]")
+    costi_input = {}
+    for _, row in df_fuel.iterrows():
+        label = str(row[0])
+        costi_input[label] = st.sidebar.number_input(label, value=to_num(row[1]), format="%.3f")
+
+    # --- 6. SIMULAZIONE ---
+    km_annui = st.sidebar.slider("Percorrenza Annua (km)", 5000, 100000, 15000)
+    
+    def simulate(row):
+        t = str(row["Tecnologia"])
+        p_fuel = next((v for k, v in costi_input.items() if k.lower() in t.lower()), 0.20)
         
-        # --- 2. SELEZIONE CATEGORIA ---
-        categoria_utente = st.sidebar.selectbox("Categoria", ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"])
-        # Cerchiamo il foglio ignorando maiuscole/minuscole
-        nome_foglio = next((f for f in xl.sheet_names if f.upper() == categoria_utente), xl.sheet_names[0])
-        
-        # Leggiamo il foglio senza header per avere il controllo totale sulle coordinate
-        df_raw = pd.read_excel(uploaded_file, sheet_name=nome_foglio, header=None)
+        fuel = row["Consumo_kWh_km"] * km_annui * p_fuel
+        maint = (row["Maint_Anno"] / 15000) * km_annui
+        capex = row["CAPEX_Anno"]
+        co2 = ((row["WtT"] + row["TtW"]) / 15000) * km_annui
+        return pd.Series([fuel, maint, capex, co2])
 
-        # --- 3. RICERCA DINAMICA DELLA TABELLA (PUNTO DI ANCORAGGIO) ---
-        # Cerchiamo la riga che contiene "Benzina" nella colonna B (indice 1)
-        # Limitiamo la ricerca alle prime 15 righe per non confonderci con i costi fuel sotto
-        anchor_row = None
-        for i in range(len(df_raw)):
-            if i > 15: break # Sicurezza: non andare oltre la riga 15
-            cell_value = str(df_raw.iloc[i, 1]).strip().lower()
-            if cell_value == "benzina":
-                anchor_row = i
-                break
-        
-        if anchor_row is None:
-            st.error("❌ Non ho trovato 'Benzina' nella colonna B entro la riga 15. Controlla il foglio.")
-            # Mostriamo cosa vede Python per aiutare il debug
-            st.write("Cosa vede Python nelle prime righe (Colonna B):")
-            st.write(df_raw.iloc[:15, 1])
-            st.stop()
+    df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S', 'CO2_S']] = df_clean.apply(simulate, axis=1)
+    df_clean["TCO"] = df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S']].sum(axis=1)
 
-        # --- 4. ESTRAZIONE DATI CON OFFSET (Basati sulla tua struttura) ---
-        # Tecnologia: Colonna B (1)
-        # Consumo: Colonna E (4)
-        # WtT: Colonna N (13)
-        # TtW: Colonna O (14)
-        # CAPEX Anno: Colonna Y (24) -> Tu hai detto colonna 23 o 24, correggiamo qui se serve
-        # Maint Anno: Colonna X (23) 
-        
-        # Estraiamo 7 righe a partire dall'ancora trovata
-        indices_colonne = [1, 4, 13, 14, 23, 24] 
-        df_clean = df_raw.iloc[anchor_row:anchor_row+7, indices_colonne].copy()
-        df_clean.columns = ["Tecnologia", "Consumo_kWh_km", "WtT", "TtW", "Maint_Anno", "CAPEX_Anno"]
+    # --- 7. GRAFICI ---
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("💰 TCO Annuo")
+        fig = px.bar(df_clean, x="Tecnologia", y=["CAPEX_S", "Manut_S", "Fuel_S"], 
+                     labels={"value": "€/anno", "variable": "Costo"}, barmode='stack',
+                     color_discrete_map={"CAPEX_S": "#0068C9", "Manut_S": "#FFA421", "Fuel_S": "#FF4B4B"})
+        st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        st.subheader("🌱 Emissioni CO2")
+        st.plotly_chart(px.bar(df_clean, x="Tecnologia", y="CO2_S", color="Tecnologia"), use_container_width=True)
 
-        # Pulizia numeri (gestisce virgole, € e spazi)
-        def to_num(x):
-            if pd.isna(x): return 0.0
-            s = str(x).replace('€', '').replace(' ', '').replace(',', '.')
-            try: return float(s)
-            except: return 0.0
+    st.table(df_clean[["Tecnologia", "TCO", "CO2_S"]].style.format(precision=2))
 
-        for c in ["Consumo_kWh_km", "WtT", "TtW", "Maint_Anno", "CAPEX_Anno"]:
-            df_clean[c] = df_clean[c].apply(to_num)
-
-        # --- 5. LETTURA COSTI FUEL (B20:C26) ---
-        # Cerchiamo la riga "COSTI FUEL" per sicurezza o usiamo il fisso 19
-        df_fuel = pd.read_excel(uploaded_file, sheet_name=nome_foglio, usecols="B:C", skiprows=19, nrows=7, header=None)
-        
-        st.sidebar.divider()
-        st.sidebar.header("⚡ Modifica Costi Fuel [€/kWh]")
-        costi_input = {}
-        for _, row in df_fuel.iterrows():
-            label = str(row[0])
-            val_def = to_num(row[1])
-            costi_input[label] = st.sidebar.number_input(label, value=val_def, format="%.3f")
-
-        # --- 6. SIMULAZIONE ---
-        st.sidebar.divider()
-        km_annui = st.sidebar.slider("Percorrenza Annua (km)", 5000, 100000, 15000)
-        KM_RIF = 15000 
-        
-        def simulate(row):
-            t = str(row["Tecnologia"])
-            # Associazione costo fuel dinamica
-            p_fuel = 0.20
-            for k, v in costi_input.items():
-                if k.lower() in t.lower():
-                    p_fuel = v
-                    break
-            
-            fuel = row["Consumo_kWh_km"] * km_annui * p_fuel
-            maint = (row["Maint_Anno"] / KM_RIF) * km_annui
-            capex = row["CAPEX_Anno"] # Quota fissa
-            co2 = ((row["WtT"] + row["TtW"]) / KM_RIF) * km_annui
-            return pd.Series([fuel, maint, capex, co2])
-
-        df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S', 'CO2_S']] = df_clean.apply(simulate, axis=1)
-        df_clean["TCO"] = df_clean['Fuel_S'] + df_clean['Manut_S'] + df_clean['CAPEX_S']
-
-        # --- 7. GRAFICI ---
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("💰 TCO Annuo Personalizzato")
-            df_p = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEX_S', 'Manut_S', 'Fuel_S'], 
-                                 var_name="Voce", value_name="Euro")
-            fig = px.bar(df_p, x="Tecnologia", y="Euro", color="Voce", barmode='stack',
-                         color_discrete_map={'Fuel_S': '#EF553B', 'Manut_S': '#FECB52', 'CAPEX_S': '#636EFA'})
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with c2:
-            st.subheader("🌱 Emissioni CO2 (WtW)")
-            st.plotly_chart(px.bar(df_clean, x="Tecnologia", y="CO2_S", color="Tecnologia"), use_container_width=True)
-
-        st.subheader("📋 Riepilogo")
-        st.dataframe(df_clean[["Tecnologia", "TCO", "Fuel_S", "CO2_S"]].style.format(precision=2), use_container_width=True)
-
-    except Exception as e:
-        st.error(f"⚠️ Errore: {e}")
-else:
-    st.info("👋 Carica il file Excel per iniziare.")
+except Exception as e:
+    st.error(f"Errore tecnico: {e}")
