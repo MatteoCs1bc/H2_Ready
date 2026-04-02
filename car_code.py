@@ -14,8 +14,53 @@ uploaded_file = st.sidebar.file_uploader("Carica il file Excel (Comparison H2 el
 
 if uploaded_file:
     try:
-        df_modelli = pd.read_excel(uploaded_file, sheet_name="Dati Targa Modelli")
-        df_dati = pd.read_excel(uploaded_file, sheet_name="Dati")
+        # --- SCELTA DELLA CATEGORIA ---
+        st.sidebar.header("🚌 Seleziona Categoria")
+        categoria_scelta = st.sidebar.selectbox(
+            "Quale flotta vuoi analizzare?", 
+            ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"]
+        )
+
+        # --- LETTURA "CHIRURGICA" DELL'EXCEL ---
+        # A seconda della scelta, diciamo a Python quali colonne esatte leggere
+        # e di saltare la prima riga (dove c'è il titolo) per prendere le vere intestazioni
+        
+        if categoria_scelta == "AUTO":
+            # Es: Legge le colonne dalla B alla F (Modifica le lettere se la tua tabella è più larga)
+            df_modelli = pd.read_excel(uploaded_file, sheet_name="Dati Targa Modelli", usecols="B:F", skiprows=1)
+        
+        elif categoria_scelta == "CAMION":
+            # Es: Legge le colonne dalla K alla O
+            df_modelli = pd.read_excel(uploaded_file, sheet_name="Dati Targa Modelli", usecols="K:O", skiprows=1)
+            
+        elif categoria_scelta == "AUTOBUS URBANO":
+            # Es: Legge le colonne dalla T alla X
+            df_modelli = pd.read_excel(uploaded_file, sheet_name="Dati Targa Modelli", usecols="T:X", skiprows=1)
+            
+        elif categoria_scelta == "AUTOBUS EXTRAURBANO":
+            # Essendo alla riga 29, dobbiamo dire a Pandas di saltare 29 righe!
+            df_modelli = pd.read_excel(uploaded_file, sheet_name="Dati Targa Modelli", usecols="T:X", skiprows=29)
+
+        # Rimuoviamo eventuali righe completamente vuote "pescate" per sbaglio dall'Excel
+        df_modelli = df_modelli.dropna(how='all')
+
+        # --- MAPPATURA DELLE COLONNE ---
+        # ORA che abbiamo ritagliato la tabella perfetta, usiamo i nomi delle colonne di QUEL blocco.
+        # Assicurati che questi nomi siano esattamente quelli della riga 2 (o riga 30 per l'extraurbano)
+        COL_TECNOLOGIA = "Combustibile" 
+        COL_COSTO_ACQUISTO = "Prezzo Acquisto Veicolo Base"
+        COL_CONSUMO = "Consumo Specifico"
+        COL_MANUTENZIONE_KM = "Costo Manutenzione per km" 
+
+        # Visto che l'utente ha già scelto la categoria a monte, non ci serve più la colonna "Tipo Veicolo"!
+        # Usiamo direttamente la tecnologia come etichetta
+        df_modelli["Etichetta_Veicolo"] = df_modelli[COL_TECNOLOGIA].astype(str)
+
+        # Filtriamo il dataframe
+        df_auto = df_modelli[["Etichetta_Veicolo", COL_TECNOLOGIA, COL_COSTO_ACQUISTO, COL_CONSUMO, COL_MANUTENZIONE_KM]].copy()
+        df_auto.columns = ["Modello", "Tecnologia", "Costo_Acquisto", "Consumo", "Manutenzione_km"]
+
+        # ... IL RESTO DEL CODICE PER I CALCOLI E I GRAFICI RIMANE IDENTICO A PRIMA ...
 
         # --- 2. MAPPATURA DELLE COLONNE AGGIORNATA CON I TUOI NOMI ---
         COL_TECNOLOGIA = "Combustibile" 
