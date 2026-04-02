@@ -2,128 +2,116 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="DSS Mobilità Comuni", page_icon="🚗", layout="wide")
-st.title("🚗 DSS Comuni: Confronto Tecnologie")
+st.title("🚗 DSS Comuni: Supporto Decisionale Tecnologie H2/EV")
 
 # --- 1. CARICAMENTO DEL FILE EXCEL ---
-st.sidebar.header("📁 Caricamento Dati")
-uploaded_file = st.sidebar.file_uploader("Carica il file Excel", type=["xlsx"])
+st.sidebar.header("📁 Caricamento Database")
+uploaded_file = st.sidebar.file_uploader("Carica il file 'Comparison H2 elc FF.xlsx'", type=["xlsx"])
 
 if uploaded_file:
     try:
-        ## --- 2. SCELTA DELLA CATEGORIA E LETTURA FOGLIO ---
-        st.sidebar.header("🚌 Seleziona Flotta")
-        categoria_scelta = st.sidebar.selectbox(
+        # Carichiamo l'elenco dei fogli per evitare errori di nome
+        xl = pd.ExcelFile(uploaded_file)
+        fogli_disponibili = xl.sheet_names
+
+        # --- 2. SCELTA DELLA CATEGORIA ---
+        st.sidebar.header("🚌 Selezione Flotta")
+        categoria_utente = st.sidebar.selectbox(
             "Quale categoria vuoi analizzare?", 
             ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"]
         )
 
-        # TRUCCO: Troviamo il nome del foglio ignorando maiuscole/minuscole
-        lista_fogli = pd.ExcelFile(uploaded_file).sheet_names
-        nome_foglio_reale = next((s for s in lista_fogli if s.upper() == categoria_scelta.upper()), None)
+        # Cerchiamo il foglio corrispondente (es. se l'utente sceglie AUTO, cerchiamo "AUTO" o "Auto")
+        nome_foglio = next((f for f in fogli_disponibili if f.upper() == categoria_utente), None)
 
-        if nome_foglio_reale:
-            # Carichiamo il foglio trovato. Usiamo skiprows=3 perché "Benzina" è al B5
-            # (Excel conta da 1, Pandas da 0, e la riga 5 è l'indice 4, 
-            # ma con skiprows=3 iniziamo a leggere dalla riga 4 che contiene le intestazioni)
-            df_raw = pd.read_excel(uploaded_file, sheet_name=nome_foglio_reale, skiprows=3)
-        else:
-            st.error(f"❌ Non ho trovato il foglio '{categoria_scelta}' nell'Excel. Fogli disponibili: {lista_fogli}")
+        if not nome_foglio:
+            st.error(f"Foglio '{categoria_utente}' non trovato nell'Excel. Fogli presenti: {fogli_disponibili}")
             st.stop()
 
-        # Assumiamo che la tabella di sintesi si trovi nel foglio omonimo (es. foglio "AUTO")
-        # Invece di usare le lettere, leggiamo tutto il foglio saltando le prime righe di "titolo"
-        # Hai detto che "Benzina" è in B5. Quindi saltiamo le prime 3 righe per avere le intestazioni pulite.
-        df_raw = pd.read_excel(uploaded_file, sheet_name=categoria_scelta.title(), skiprows=3)
+        # --- 3. LETTURA COSTI FUEL (C20:C26) ---
+        # Leggiamo i costi carburante dal foglio scelto (o dal foglio 'Dati' se preferisci)
+        # Qui ipotizziamo siano nel foglio della categoria stessa come da tua indicazione
+        df_fuel = pd.read_excel(uploaded_file, sheet_name=nome_foglio, usecols="B:C", skiprows=19, nrows=7, header=None)
+        df_fuel.columns = ["Tipo", "Valore"]
         
-        # Eliminiamo colonne e righe completamente vuote per pulire la tabella
-        df_raw = df_raw.dropna(how='all', axis=1).dropna(how='all', axis=0)
+        st.sidebar.divider()
+        st.sidebar.header("⚡ Costi Carburante [€/kWh]")
+        
+        # Creiamo gli input dinamici usando i valori letti dall'Excel come default
+        costi_input = {}
+        for i, row in df_fuel.iterrows():
+            nome_label = str(row["Tipo"])
+            valore_def = float(row["Valore"]) if pd.notnull(row["Valore"]) else 0.0
+            costi_input[nome_label] = st.sidebar.number_input(nome_label, value=valore_def, format="%.3f")
 
-        with st.expander("🛠️ DEBUG: Guarda come Python vede le colonne di questo foglio"):
-            st.write("Cerca qui i nomi esatti delle colonne per il Consumo [kWh/km], Emissioni, CAPEx e OPEx:")
-            st.write(df_raw.columns.tolist())
-
-        # --- 3. MAPPATURA COLONNE (Da aggiornare con i nomi dal Debugger!) ---
-        # Poiché la tabella è complessa, qui metterai i nomi esatti (anche gli "Unnamed") 
-        # che vedi nel debugger per estrarre i dati base.
-        COL_TECNOLOGIA = "Unnamed: 1" # La colonna B dove ci sono i nomi (Benzina, Diesel...)
-        COL_CONSUMO_KWH = "Consumo"   # Il consumo in kWh/km
-        COL_EMISSIONI = "WtW - [kgCO2/anno]" # Emissioni Well-to-Wheel
-        COL_CAPEX = "CAPEx" # Costo di acquisto
-        COL_OPEX_MANUT = "OPEx Maintenance" # Costo manutenzione al km (es. 0,080)
-
-        # Filtriamo solo le righe che contengono i nomi delle tecnologie che ci interessano
-        tecnologie_valide = ["Benzina", "Diesel", "Elettrico rete", "Elettrico autoprodotto", 
+        # --- 4. LETTURA TABELLA OUTPUT (Benzina in B5) ---
+        # Saltiamo 3 righe per arrivare alla testata della tabella (riga 4)
+        df_output = pd.read_excel(uploaded_file, sheet_name=nome_foglio, skiprows=3)
+        
+        # Pulizia: teniamo solo le righe delle tecnologie principali
+        tecnologie_target = ["Benzina", "Diesel", "Elettrico rete", "Elettrico autoprodotto", 
                              "Idrogeno Grigio", "Idrogeno rete", "Idrogeno autoprodotto"]
         
-        df_sintesi = df_raw[df_raw[COL_TECNOLOGIA].isin(tecnologie_valide)].copy()
-        
-        # Rinominiamo per comodità
-        df_sintesi.columns = ["Tecnologia", "Consumo_kWh_km", "CO2_Base", "CAPEX_Base", "Manutenzione_km"]
-        # Forziamo a numeri pulendo eventuali virgole
-        for col in ["Consumo_kWh_km", "CO2_Base", "CAPEX_Base", "Manutenzione_km"]:
-            df_sintesi[col] = pd.to_numeric(df_sintesi[col].astype(str).str.replace(',', '.'), errors='coerce')
+        # Filtriamo la colonna B (che Pandas chiamerà probabilmente 'Unnamed: 1' se la cella B4 è vuota)
+        # Cerchiamo la colonna che contiene "Benzina"
+        col_tec_name = df_output.columns[1] 
+        df_final = df_output[df_output[col_tec_name].isin(tecnologie_target)].copy()
 
-
-        # --- 4. SIDEBAR: COSTI FUEL ESATTI ---
-        st.sidebar.divider()
-        st.sidebar.header("⚡ Costi Fuel [€/kWh]")
-        
-        costo_benzina = st.sidebar.number_input("Benzina", value=0.22, format="%.2f")
-        costo_diesel = st.sidebar.number_input("Diesel", value=0.18, format="%.2f")
-        costo_elc_rete = st.sidebar.number_input("Elettrico rete", value=0.31, format="%.2f")
-        costo_elc_auto = st.sidebar.number_input("Elettrico autoprodotto", value=0.24, format="%.2f")
-        costo_h2_grigio = st.sidebar.number_input("Idrogeno grigio", value=0.06, format="%.2f")
-        costo_h2_rete = st.sidebar.number_input("Idrogeno rete (elettrolisi)", value=0.60, format="%.2f")
-        costo_h2_verde = st.sidebar.number_input("Idrogeno Verde (PV)", value=0.45, format="%.2f")
-
-        st.sidebar.divider()
-        st.sidebar.header("⚙️ Parametri Flotta")
-        km_annui = st.sidebar.slider("Percorrenza Annua (km/anno)", min_value=5000, max_value=80000, value=15000)
-        lifetime = st.sidebar.slider("Anni di utilizzo (Ammortamento)", min_value=1, max_value=20, value=10)
-
-        # --- 5. MOTORE DI CALCOLO ---
-        # Dizionario per mappare la tecnologia al costo fuel scelto nella sidebar
-        mappa_costi_fuel = {
-            "Benzina": costo_benzina,
-            "Diesel": costo_diesel,
-            "Elettrico rete": costo_elc_rete,
-            "Elettrico autoprodotto": costo_elc_auto,
-            "Idrogeno Grigio": costo_h2_grigio,
-            "Idrogeno rete": costo_h2_rete,
-            "Idrogeno autoprodotto": costo_h2_verde
+        # Mappatura colonne basata sulla tua descrizione dell'output
+        # Nota: i nomi devono corrispondere a quelli della riga 4 del tuo Excel
+        mappa_colonne = {
+            col_tec_name: "Tecnologia",
+            "Consumo": "Consumo_kWh_km",
+            "WtW - [kgCO2/anno]": "CO2_Annua",
+            "CAPEx": "Costo_Veicolo",
+            "OPEx Maintenance": "Manutenzione_km"
         }
-
-        df_sintesi["Costo_Fuel_kWh"] = df_sintesi["Tecnologia"].map(mappa_costi_fuel)
-
-        # Calcoliamo i costi aggiornati in base ai km scelti dall'utente
-        df_sintesi["Costo_Carburante_Annuo"] = df_sintesi["Consumo_kWh_km"] * km_annui * df_sintesi["Costo_Fuel_kWh"]
-        df_sintesi["Manutenzione_Annua"] = df_sintesi["Manutenzione_km"] * km_annui
-        df_sintesi["CAPEX_Annuo"] = df_sintesi["CAPEX_Base"] / lifetime
         
-        # TCO Totale
-        df_sintesi["TCO_Annuo"] = df_sintesi["CAPEX_Annuo"] + df_sintesi["Costo_Carburante_Annuo"] + df_sintesi["Manutenzione_Annua"]
+        # Rinominiamo solo le colonne che troviamo
+        df_display = df_final.rename(columns=mappa_colonne)
 
-        # Proporzioniamo la CO2 (se il dato base è calcolato su un "anno tipo", lo scaliamo sui nuovi km)
-        # Supponiamo che il dato base nel tuo Excel fosse calcolato su 15.000 km
-        KM_BASE_EXCEL = 15000 
-        df_sintesi["CO2_Annua_Calcolata"] = (df_sintesi["CO2_Base"] / KM_BASE_EXCEL) * km_annui
+        # --- 5. PARAMETRI DI SIMULAZIONE ---
+        st.sidebar.divider()
+        km_annui = st.sidebar.slider("Percorrenza Annua (km/anno)", 5000, 100000, 15000)
+        lifetime = st.sidebar.slider("Anni Ammortamento", 1, 20, 10)
 
-        # --- 6. VISUALIZZAZIONE ---
-        st.subheader("📊 Analisi TCO Annuo")
+        # --- 6. CALCOLO DINAMICO TCO ---
+        def calcola_tco(row):
+            tec = row["Tecnologia"]
+            prezzo_energia = costi_input.get(tec, 0.20) # Se non trova il nome, usa 0.20
+            
+            fuel_annuo = row["Consumo_kWh_km"] * km_annui * prezzo_energia
+            manut_annua = row["Manutenzione_km"] * km_annui
+            capex_annuo = row["Costo_Veicolo"] / lifetime
+            return fuel_annuo + manut_annua + capex_annuo
+
+        df_display["TCO_Annuo_Simulato"] = df_display.apply(calcola_tco, axis=1)
+
+        # --- 7. GRAFICI ---
+        col_sx, col_dx = st.columns(2)
         
-        df_melted = pd.melt(df_sintesi, id_vars=['Tecnologia'], 
-                            value_vars=['CAPEX_Annuo', 'Costo_Carburante_Annuo', 'Manutenzione_Annua'],
-                            var_name='Voce di Costo', value_name='Euro')
-        
-        fig_tco = px.bar(df_melted, x="Tecnologia", y="Euro", color="Voce di Costo", title="Composizione del Costo", barmode='stack')
-        st.plotly_chart(fig_tco, use_container_width=True)
+        with col_sx:
+            st.subheader("💰 Costo Totale Annuo (TCO)")
+            fig_tco = px.bar(df_display, x="Tecnologia", y="TCO_Annuo_Simulato", 
+                             color="Tecnologia", title="Confronto Costi (€/anno)")
+            st.plotly_chart(fig_tco, use_container_width=True)
 
-        st.subheader("📑 Dati di Sintesi Dinamici")
-        st.dataframe(df_sintesi[["Tecnologia", "TCO_Annuo", "Costo_Carburante_Annuo", "CO2_Annua_Calcolata"]])
+        with col_dx:
+            st.subheader("🌱 Emissioni CO2 (WtW)")
+            # Proporzioniamo la CO2 ai nuovi km (assumendo che il dato Excel sia su 15.000km)
+            df_display["CO2_Scalata"] = (df_display["CO2_Annua"] / 15000) * km_annui
+            fig_co2 = px.bar(df_display, x="Tecnologia", y="CO2_Scalata", 
+                             title="Emissioni Annuali (kg CO2/anno)")
+            st.plotly_chart(fig_co2, use_container_width=True)
+
+        st.subheader("📋 Tabella Dati Analitici")
+        st.write(df_display[["Tecnologia", "TCO_Annuo_Simulato", "CO2_Scalata"]])
 
     except Exception as e:
-        st.error(f"⚠️ Errore di lettura: {e}")
+        st.error(f"Errore tecnico: {e}")
+        st.info("Assicurati che i nomi delle colonne nell'Excel (riga 4) corrispondano a: 'Consumo', 'WtW - [kgCO2/anno]', 'CAPEx', 'OPEx Maintenance'")
 
 else:
-    st.info("👆 Carica il tuo Excel per iniziare.")
+    st.info("👋 Benvenuto! Carica il file Excel per visualizzare il Decision Support System.")
