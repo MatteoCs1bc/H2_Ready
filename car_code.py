@@ -41,14 +41,28 @@ if uploaded_file:
             st.write(df_modelli.columns.tolist())
 
         # --- 3. MAPPATURA DELLE COLONNE ---
-        # Sostituisci questi nomi con quelli esatti che vedi nel Debugger qui sopra.
-        # Se usi il trucco degli "Unnamed", inseriscili qui.
-        COL_TECNOLOGIA = "Unnamed: 1" # O il nome della colonna se l'hai scritto
-        COL_MODELLO = "Modello"       # Es. "Unnamed: 2"
-        COL_CONSUMO = "Consumo"       # Es. "Unnamed: 4"
-        COL_COSTO_ACQUISTO = "Costo"  # Es. "Unnamed: 5"
+        # ORA USIAMO SOLO I NOMI "UNNAMED" TROVATI DAL DEBUGGER!
+        
+        # In base al tuo esempio, assegniamo gli Unnamed corretti:
+        # Unnamed: 1 = Modello
+        # Unnamed: 2 = Serbatoio (non ci serve per i calcoli)
+        # Unnamed: 3 = Autonomia (non ci serve)
+        # Unnamed: 4 = Consumo
+        # Unnamed: 5 = Costo
+        
+        COL_MODELLO = "Unnamed: 1"
+        COL_CONSUMO = "Unnamed: 4"
+        COL_COSTO_ACQUISTO = "Unnamed: 5"
+        
+        # Visto che la "Tecnologia" (Benzina, Elettrico) nel tuo Excel è un titolo
+        # sopra la tabella e NON una colonna, per ora "freghiamo" il sistema 
+        # duplicando la colonna del modello, poi lo aggiusteremo!
+        COL_TECNOLOGIA = "Unnamed: 1" 
 
+        # Ritagliamo solo le colonne che ci servono
         df_auto = df_modelli[[COL_MODELLO, COL_TECNOLOGIA, COL_COSTO_ACQUISTO, COL_CONSUMO]].copy()
+        
+        # Rinominiamo le colonne in modo pulito per far funzionare i grafici
         df_auto.columns = ["Modello", "Tecnologia", "Costo_Acquisto", "Consumo"]
 
         # --- 4. SIDEBAR: INPUT UTENTE (PARAMETRI ECONOMICI) ---
