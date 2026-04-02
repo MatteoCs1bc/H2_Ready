@@ -11,12 +11,25 @@ uploaded_file = st.sidebar.file_uploader("Carica il file Excel", type=["xlsx"])
 
 if uploaded_file:
     try:
-        # --- 2. SCELTA DELLA CATEGORIA E LETTURA FOGLIO ---
+        ## --- 2. SCELTA DELLA CATEGORIA E LETTURA FOGLIO ---
         st.sidebar.header("🚌 Seleziona Flotta")
         categoria_scelta = st.sidebar.selectbox(
             "Quale categoria vuoi analizzare?", 
             ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"]
         )
+
+        # TRUCCO: Troviamo il nome del foglio ignorando maiuscole/minuscole
+        lista_fogli = pd.ExcelFile(uploaded_file).sheet_names
+        nome_foglio_reale = next((s for s in lista_fogli if s.upper() == categoria_scelta.upper()), None)
+
+        if nome_foglio_reale:
+            # Carichiamo il foglio trovato. Usiamo skiprows=3 perché "Benzina" è al B5
+            # (Excel conta da 1, Pandas da 0, e la riga 5 è l'indice 4, 
+            # ma con skiprows=3 iniziamo a leggere dalla riga 4 che contiene le intestazioni)
+            df_raw = pd.read_excel(uploaded_file, sheet_name=nome_foglio_reale, skiprows=3)
+        else:
+            st.error(f"❌ Non ho trovato il foglio '{categoria_scelta}' nell'Excel. Fogli disponibili: {lista_fogli}")
+            st.stop()
 
         # Assumiamo che la tabella di sintesi si trovi nel foglio omonimo (es. foglio "AUTO")
         # Invece di usare le lettere, leggiamo tutto il foglio saltando le prime righe di "titolo"
