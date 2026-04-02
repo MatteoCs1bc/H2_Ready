@@ -41,29 +41,30 @@ if uploaded_file:
             st.write(df_modelli.columns.tolist())
 
         # --- 3. MAPPATURA DELLE COLONNE ---
-        # ORA USIAMO SOLO I NOMI "UNNAMED" TROVATI DAL DEBUGGER!
-        
-        # In base al tuo esempio, assegniamo gli Unnamed corretti:
-        # Unnamed: 1 = Modello
-        # Unnamed: 2 = Serbatoio (non ci serve per i calcoli)
-        # Unnamed: 3 = Autonomia (non ci serve)
-        # Unnamed: 4 = Consumo
-        # Unnamed: 5 = Costo
-        
+            
         COL_MODELLO = "Unnamed: 1"
         COL_CONSUMO = "Unnamed: 4"
         COL_COSTO_ACQUISTO = "Unnamed: 5"
-        
-        # Visto che la "Tecnologia" (Benzina, Elettrico) nel tuo Excel è un titolo
-        # sopra la tabella e NON una colonna, per ora "freghiamo" il sistema 
-        # duplicando la colonna del modello, poi lo aggiusteremo!
-        COL_TECNOLOGIA = "Unnamed: 1" 
+        COL_TECNOLOGIA = "Unnamed: 1" # Temporaneo per l'etichetta
 
         # Ritagliamo solo le colonne che ci servono
         df_auto = df_modelli[[COL_MODELLO, COL_TECNOLOGIA, COL_COSTO_ACQUISTO, COL_CONSUMO]].copy()
         
-        # Rinominiamo le colonne in modo pulito per far funzionare i grafici
+        # Rinominiamo le colonne in modo pulito
         df_auto.columns = ["Modello", "Tecnologia", "Costo_Acquisto", "Consumo"]
+
+        # --- 3.1 PULIZIA DEI DATI (LA MAGIA!) ---
+        # 1. Rimuoviamo la prima riga perché contiene le unità di misura (es. "[l/km]")
+        df_auto = df_auto.iloc[1:].reset_index(drop=True)
+        
+        # Rimuoviamo eventuali righe vuote rimaste
+        df_auto = df_auto.dropna(subset=["Modello"])
+
+        # 2. Puliamo il Consumo: convertiamo la virgola in punto e lo trasformiamo in numero
+        df_auto["Consumo"] = df_auto["Consumo"].astype(str).str.replace(',', '.').astype(float)
+
+        # 3. Puliamo il Costo: togliamo il simbolo €, i punti delle migliaia e gli spazi
+        df_auto["Costo_Acquisto"] = df_auto["Costo_Acquisto"].astype(str).str.replace('€', '').str.replace('.', '').str.replace(' ', '').astype(float)
 
         # --- 4. SIDEBAR: INPUT UTENTE (PARAMETRI ECONOMICI) ---
         st.sidebar.divider()
