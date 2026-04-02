@@ -44,6 +44,14 @@ if uploaded_file:
         # Rimuoviamo eventuali righe completamente vuote "pescate" per sbaglio dall'Excel
         df_modelli = df_modelli.dropna(how='all')
 
+        # Rimuoviamo eventuali righe completamente vuote "pescate" per sbaglio
+        df_modelli = df_modelli.dropna(how='all')
+
+        # --- TRUCCO DI DEBUG: SCOPRIAMO I VERI NOMI ---
+        with st.expander("🛠️ DEBUG: Guarda come Python vede le tue colonne"):
+            st.write(f"Ecco le intestazioni esatte che ho trovato per la categoria {categoria_scelta}:")
+            st.write(df_modelli.columns.tolist())
+
         # --- MAPPATURA DELLE COLONNE ---
         # ORA che abbiamo ritagliato la tabella perfetta, usiamo i nomi delle colonne di QUEL blocco.
         # Assicurati che questi nomi siano esattamente quelli della riga 2 (o riga 30 per l'extraurbano)
