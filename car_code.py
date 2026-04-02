@@ -38,21 +38,23 @@ if uploaded_file:
             costi_input[label] = st.sidebar.number_input(label, value=valore_excel, format="%.3f")
 
         # --- 4. LETTURA TABELLA DATI ---
+        # Leggiamo il foglio intero senza header
         df_full = pd.read_excel(uploaded_file, sheet_name=nome_foglio, header=None)
 
-        # MAPPATURA AGGIORNATA (BASATA SUI TUOI FEEDBACK)
-        # Riga 5 di Excel = Indice 4 di Pandas
-        # Colonna C = Indice 2 (Tecnologia)
-        # Colonna F = Indice 5 (Consumo)
-        # Colonna O = Indice 14 (WtT)
-        # Colonna P = Indice 15 (TtW)
-        # Colonna X = Indice 23 (CAPEX Anno)
-        # Colonna Y = Indice 24 (OPEX Maint Anno)
+        # MAPPATURA AGGIORNATA (Diesel in B6)
+        # Riga 6 Excel = Indice 5 Pandas
+        # Colonna B = Indice 1 (Tecnologia)
+        # Colonna E = Indice 4 (Consumo kWh/km)
+        # Colonna N = Indice 13 (WtT)
+        # Colonna O = Indice 14 (TtW)
+        # Colonna W = Indice 22 (CAPEX Anno) <-- Slittato di 1 perché Diesel è in B e non C
+        # Colonna X = Indice 23 (OPEX Maint Anno)
         
-        df_clean = df_full.iloc[4:11, [2, 5, 14, 15, 23, 24]].copy()
+        # Estraiamo le righe dalla 5 alla 12 (Benzina è in B5, Diesel in B6)
+        # Quindi prendiamo gli indici riga 4:11
+        df_clean = df_full.iloc[4:11, [1, 4, 13, 14, 22, 23]].copy()
         df_clean.columns = ["Tecnologia", "Consumo_kWh_km", "WtT", "TtW", "CAPEX_Anno", "Maint_Anno"]
 
-        # Funzione di pulizia numeri (gestisce testi, virgole e formati Excel sporchi)
         def clean_numeric(x):
             if pd.isna(x): return 0.0
             s = str(x).replace('€', '').replace('%', '').replace(' ', '')
@@ -76,7 +78,6 @@ if uploaded_file:
 
         def calcola_simulazione(row):
             tec = str(row["Tecnologia"])
-            # Cerca il costo fuel corrispondente
             prezzo_fuel = 0.20
             for k, v in costi_input.items():
                 if k.lower() in tec.lower():
@@ -85,7 +86,7 @@ if uploaded_file:
             
             fuel_annuo = row["Consumo_kWh_km"] * km_annui * prezzo_fuel
             manut_annua = (row["Maint_Anno"] / KM_RIF) * km_annui
-            capex_annuo = row["CAPEX_Anno"] # Ammortamento annuo
+            capex_annuo = row["CAPEX_Anno"] 
             co2_tot = ((row["WtT"] + row["TtW"]) / KM_RIF) * km_annui
             
             return pd.Series([fuel_annuo, manut_annua, capex_annuo, co2_tot])
@@ -114,7 +115,7 @@ if uploaded_file:
 
     except Exception as e:
         st.error(f"Errore tecnico: {e}")
-        st.info("Controlla il file: 'Diesel' deve essere nella riga 5, colonna C.")
+        st.info("Verifica il file: Benzina deve essere in B5, Diesel in B6.")
 
 else:
-    st.info("👋 Carica il file Excel per iniziare l'analisi.")
+    st.info("👋 Carica il file Excel per iniziare.")
