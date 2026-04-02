@@ -5,106 +5,109 @@ import os
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="DSS Mobilità Comuni", page_icon="🚗", layout="wide")
-st.title("🚗 DSS Comuni: Analisi Automatica Flotta")
+st.title("🚗 DSS Comuni: Analisi Flotta (Multi-Alimentazione)")
 
-# --- 1. CARICAMENTO AUTOMATICO ---
-# Il file deve essere nella stessa cartella di car_code.py su GitHub
+# --- 1. CARICAMENTO AUTOMATICO DA GITHUB ---
 NOME_FILE_EXCEL = "Comparison H2 elc FF.xlsx" 
 
 if not os.path.exists(NOME_FILE_EXCEL):
-    st.error(f"❌ File '{NOME_FILE_EXCEL}' non trovato nel repository.")
+    st.error(f"❌ File '{NOME_FILE_EXCEL}' non trovato nel repository GitHub.")
     st.stop()
 
 try:
-    # Carichiamo il file (senza @st.cache_data per evitare l'errore di serializzazione)
     xl = pd.ExcelFile(NOME_FILE_EXCEL, engine='openpyxl')
-    fogli_disponibili = xl.sheet_names
-
-    # --- 2. SELEZIONE CATEGORIA ---
     categoria_utente = st.sidebar.selectbox("Seleziona Flotta", ["AUTO", "CAMION", "AUTOBUS URBANO", "AUTOBUS EXTRAURBANO"])
+    nome_foglio = next((f for f in xl.sheet_names if f.upper() == categoria_utente), xl.sheet_names[0])
     
-    # Cerchiamo il foglio ignorando maiuscole/minuscole
-    nome_foglio = next((f for f in fogli_disponibili if f.upper() == categoria_utente), fogli_disponibili[0])
-    
-    # Leggiamo il foglio "puro" per trovare l'ancora
+    # Leggiamo il foglio integrale
     df_raw = pd.read_excel(xl, sheet_name=nome_foglio, header=None, engine='openpyxl')
 
-    # --- 3. RICERCA ANCORA "BENZINA" (Colonna B = Indice 1) ---
-    anchor_row = None
-    # Cerchiamo nelle prime 15 righe per evitare la tabella costi fuel
-    for i in range(min(15, len(df_raw))):
-        val = str(df_raw.iloc[i, 1]).strip().lower()
-        if val == "benzina":
-            anchor_row = i
-            break
+    # --- 2. TROVA LA TABELLA DATI (ANCORE) ---
+    # Cerchiamo la prima occorrenza di "Benzina" nelle prime 15 righe
+    riga_inizio_dati = None
+    col_inizio_dati = None
+    for r in range(min(15, len(df_raw))):
+        for c in range(len(df_raw.columns)):
+            if str(df_raw.iloc[r, c]).strip().lower() == "benzina":
+                riga_inizio_dati = r
+                col_inizio_dati = c
+                break
+        if riga_inizio_dati is not None: break
 
-    if anchor_row is None:
-        st.warning(f"⚠️ Non trovo 'Benzina' nella colonna B (prime 15 righe) del foglio {nome_foglio}.")
-        st.write("Verifica la struttura del foglio nell'anteprima qui sotto:")
-        st.dataframe(df_raw.iloc[:15, :10]) 
+    if riga_inizio_dati is None:
+        st.error("Impossibile trovare la tabella dati (parola chiave 'Benzina' non trovata in alto).")
         st.stop()
 
-    # --- 4. ESTRAZIONE DATI CON OFFSET ---
-    # Tecnologia(B=1), Consumo(E=4), WtT(N=13), TtW(O=14), CAPEX_A(X=23), Maint_A(Y=24)
-    # Se i dati sono slittati, cambiamo questi numeri:
-    df_clean = df_raw.iloc[anchor_row:anchor_row+7, [1, 4, 13, 14, 23, 24]].copy()
+    # --- 3. ESTRAZIONE DATI (7 RIGHE DA BENZINA IN GIÙ) ---
+    # Basato sulle tue indicazioni: 
+    # Tecnologia (Col B/Index 1), Consumo (Col E/Index 4), WtT (N/13), TtW (O/14), Maint (X/23), CAPEX (Y/24)
+    # Calcoliamo gli offset rispetto alla colonna dove abbiamo trovato "Benzina"
+    off = col_inizio_dati 
+    df_clean = df_raw.iloc[riga_inizio_dati:riga_inizio_dati+10, [off, off+3, off+12, off+13, off+22, off+23]].copy()
     df_clean.columns = ["Tecnologia", "Consumo_kWh_km", "WtT", "TtW", "CAPEX_Anno", "Maint_Anno"]
+    
+    # Pulizia: rimuoviamo righe che non sono tecnologie (come le righe vuote 12 e 13)
+    tecnologie_valide = ["benzina", "diesel", "elettrico", "idrogeno"]
+    df_clean = df_clean[df_clean["Tecnologia"].astype(str).str.lower().str.contains('|'.join(tecnologie_valide), na=False)]
 
-    def to_num(x):
+    def clean_val(x):
         if pd.isna(x): return 0.0
         s = str(x).replace('€', '').replace(' ', '').replace(',', '.')
         try: return float(s)
         except: return 0.0
 
-    for c in df_clean.columns[1:]:
-        df_clean[c] = df_clean[c].apply(to_num)
+    for col in df_clean.columns[1:]:
+        df_clean[col] = df_clean[col].apply(clean_val)
 
-    # --- 5. COSTI FUEL (C20:C26) ---
-    # Leggiamo i nomi dalla colonna B (1) e i valori dalla C (2)
-    df_fuel = pd.read_excel(xl, sheet_name=nome_foglio, usecols="B:C", skiprows=19, nrows=7, header=None, engine='openpyxl')
+    # --- 4. TROVA LA TABELLA COSTI FUEL (PARTE BASSA) ---
+    # Cerchiamo la riga dove ricomincia "Benzina" o "Costi Fuel" dopo la riga 15
+    riga_prezzi = None
+    for r in range(15, len(df_raw)):
+        if str(df_raw.iloc[r, col_inizio_dati]).strip().lower() in ["benzina", "costi fuel"]:
+            riga_prezzi = r
+            break
     
     st.sidebar.header("⚡ Costi Carburante [€/kWh]")
     costi_input = {}
-    for _, row in df_fuel.iterrows():
-        label = str(row[0])
-        val_default = to_num(row[1])
-        costi_input[label] = st.sidebar.number_input(label, value=val_default, format="%.3f")
+    if riga_prezzi is not None:
+        # Leggiamo i 7 prezzi
+        df_prezzi = df_raw.iloc[riga_prezzi:riga_prezzi+7, [col_inizio_dati, col_inizio_dati+1]]
+        for _, row in df_prezzi.iterrows():
+            label = str(row[0])
+            val_def = clean_val(row[1])
+            costi_input[label] = st.sidebar.number_input(label, value=val_def, format="%.3f")
+    else:
+        st.sidebar.warning("Tabella prezzi non trovata automaticamente. Uso valori standard.")
+        costi_input = {"Benzina": 0.22, "Diesel": 0.18, "Elettrico": 0.30, "Idrogeno": 0.50}
 
-    # --- 6. SIMULAZIONE ---
-    st.sidebar.divider()
+    # --- 5. SIMULAZIONE ---
     km_annui = st.sidebar.slider("Percorrenza Annua (km)", 5000, 100000, 15000)
-    KM_RIF = 15000 
     
-    def simulate(row):
+    def run_sim(row):
         t = str(row["Tecnologia"])
         p_fuel = next((v for k, v in costi_input.items() if k.lower() in t.lower()), 0.20)
-        
         fuel = row["Consumo_kWh_km"] * km_annui * p_fuel
-        maint = (row["Maint_Anno"] / KM_RIF) * km_annui
+        maint = (row["Maint_Anno"] / 15000) * km_annui
         capex = row["CAPEX_Anno"]
-        co2 = ((row["WtT"] + row["TtW"]) / KM_RIF) * km_annui
+        co2 = ((row["WtT"] + row["TtW"]) / 15000) * km_annui
         return pd.Series([fuel, maint, capex, co2])
 
-    df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S', 'CO2_S']] = df_clean.apply(simulate, axis=1)
-    df_clean["TCO"] = df_clean['Fuel_S'] + df_clean['Manut_S'] + df_clean['CAPEX_S']
+    df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S', 'CO2_S']] = df_clean.apply(run_sim, axis=1)
+    df_clean["TCO"] = df_clean[['Fuel_S', 'Manut_S', 'CAPEX_S']].sum(axis=1)
 
-    # --- 7. GRAFICI ---
+    # --- 6. GRAFICI ---
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("💰 TCO Annuo Personalizzato")
-        df_p = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEX_S', 'Manut_S', 'Fuel_S'], 
-                             var_name="Voce", value_name="Euro")
-        df_p["Voce"] = df_p["Voce"].replace({'CAPEX_S': 'CAPEX', 'Manut_S': 'Manutenzione', 'Fuel_S': 'Fuel'})
-        fig = px.bar(df_p, x="Tecnologia", y="Euro", color="Voce", barmode='stack',
-                     color_discrete_map={'Fuel': '#EF553B', 'Manutenzione': '#FECB52', 'CAPEX': '#636EFA'})
+        st.subheader("💰 TCO Annuo")
+        fig = px.bar(df_clean, x="Tecnologia", y=["CAPEX_S", "Manut_S", "Fuel_S"], 
+                     labels={"value": "Euro", "variable": "Voce"}, barmode='stack',
+                     color_discrete_map={"CAPEX_S": "#0068C9", "Manut_S": "#FFA421", "Fuel_S": "#FF4B4B"})
         st.plotly_chart(fig, use_container_width=True)
-    
     with c2:
-        st.subheader("🌱 Emissioni CO2 (kg/anno)")
+        st.subheader("🌱 CO2 Well-to-Wheel")
         st.plotly_chart(px.bar(df_clean, x="Tecnologia", y="CO2_S", color="Tecnologia"), use_container_width=True)
 
-    st.subheader("📋 Tabella Riepilogativa")
-    st.dataframe(df_clean[["Tecnologia", "TCO", "Fuel_S", "CO2_S"]].style.format(precision=2))
+    st.table(df_clean[["Tecnologia", "TCO", "CO2_S"]].style.format(precision=2))
 
 except Exception as e:
     st.error(f"Errore tecnico: {e}")
