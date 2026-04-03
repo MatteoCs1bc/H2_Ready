@@ -33,7 +33,6 @@ try:
 
     for i in range(min(25, len(df_raw))):
         nome_tec = str(df_raw.iloc[i, 1]).strip() # Colonna B
-        # Risolve eventuali problemi di maiuscole/minuscole
         match_tec = next((t for t in tecnologie_cercate if t.lower() == nome_tec.lower()), None)
         
         if match_tec:
@@ -42,12 +41,12 @@ try:
                     "Tecnologia": match_tec,
                     "Autonomia": clean_val(df_raw.iloc[i, 3]),        # D
                     "Consumo": clean_val(df_raw.iloc[i, 4]),          # E
-                    "Eta_WtW": clean_val(df_raw.iloc[i, 9]),          # J (Rendimento)
-                    "En_Primaria_Base": clean_val(df_raw.iloc[i, 13]),# N (Calcolata base Excel)
-                    "Emiss_Annue_Q": clean_val(df_raw.iloc[i, 16]),   # Q (P+O) base Excel
-                    "Emiss_Costruz": clean_val(df_raw.iloc[i, 17]),   # R (M59) Costruzione fissa
-                    "Maint_km": clean_val(df_raw.iloc[i, 22]),        # W (Costo Maint €/km)
-                    "CAPEX_Totale": clean_val(df_raw.iloc[i, 25])     # Z (Costo acquisto €)
+                    "Eta_WtW": clean_val(df_raw.iloc[i, 9]),          # J 
+                    "En_Primaria_Base": clean_val(df_raw.iloc[i, 13]),# N 
+                    "Emiss_Annue_Q": clean_val(df_raw.iloc[i, 16]),   # Q 
+                    "Emiss_Costruz": clean_val(df_raw.iloc[i, 17]),   # R 
+                    "Maint_km": clean_val(df_raw.iloc[i, 22]),        # W 
+                    "CAPEX_Totale": clean_val(df_raw.iloc[i, 25])     # Z 
                 })
             except Exception:
                 continue
@@ -57,16 +56,22 @@ try:
         st.stop()
 
     df_clean = pd.DataFrame(dati_finali)
-
-    # Assicuriamoci che l'ordine delle righe rispetti il tuo (Benzina -> Idrogeno)
     df_clean['Tecnologia'] = pd.Categorical(df_clean['Tecnologia'], categories=tecnologie_cercate, ordered=True)
     df_clean = df_clean.sort_values('Tecnologia')
 
-    # --- 2. LETTURA COSTI FUEL (B20:C26) ---
+    # --- 2. LETTURA COSTI FUEL E CONVERSIONE (B20:F26) ---
     st.sidebar.divider()
-    st.sidebar.header("⚡ Costi Carburante [€/kWh]")
-    costi_input = {}
+    st.sidebar.header("⚡ Costi Carburante")
     
+    # Dizionario che conterrà i costi già convertiti in €/kWh per i calcoli interni
+    costi_input_kwh = {} 
+    
+    def get_unit(t):
+        t_low = t.lower()
+        if "benzina" in t_low or "diesel" in t_low: return "[€/l]"
+        if "idrogeno" in t_low: return "[€/kg]"
+        return "[€/kWh]"
+
     riga_prezzi = 19
     for r in range(12, len(df_raw)):
         if str(df_raw.iloc[r, 1]).strip() == "Benzina":
@@ -76,10 +81,29 @@ try:
     for r in range(riga_prezzi, riga_prezzi + 7):
         try:
             label = str(df_raw.iloc[r, 1]).strip()
-            # Mappa per ignorare piccole differenze di testo
             match_label = next((t for t in tecnologie_cercate if t.lower() in label.lower() or label.lower() in t.lower()), label)
-            val_def = clean_val(df_raw.iloc[r, 2])
-            costi_input[match_label] = st.sidebar.number_input(match_label, value=val_def, format="%.3f")
+            
+            # Estraiamo l'unità di natura (C) e l'unità convertita (F)
+            val_natura = clean_val(df_raw.iloc[r, 2]) # Colonna C (es. 1.9 €/l)
+            val_kwh_excel = clean_val(df_raw.iloc[r, 5]) # Colonna F (es. 0.22 €/kWh)
+            
+            # Calcoliamo dinamicamente il fattore di conversione dell'Excel
+            if val_natura > 0:
+                fattore = val_kwh_excel / val_natura
+            else:
+                # Backup di sicurezza basato sui tuoi valori standard
+                if "benzina" in match_label.lower(): fattore = 0.22 / 1.9
+                elif "diesel" in match_label.lower(): fattore = 0.18 / 1.8
+                elif "idrogeno" in match_label.lower(): fattore = 0.03 # 0.06/2
+                else: fattore = 1.0
+                
+            etichetta_ui = f"{match_label} {get_unit(match_label)}"
+            
+            # L'utente imposta il prezzo in litri/kg
+            user_val = st.sidebar.number_input(etichetta_ui, value=val_natura, format="%.3f")
+            
+            # Il sistema salva in memoria il valore convertito in kWh
+            costi_input_kwh[match_label] = user_val * fattore
         except:
             pass
 
@@ -91,33 +115,29 @@ try:
     lifetime = st.sidebar.slider("Anni di Utilizzo (y)", 1, 20, 10, step=1)
     km_totali = km_annui * lifetime
     
-    # Mostriamo la percorrenza totale in modo chiaro
     st.sidebar.metric(label="Percorrenza Totale [km]", value=f"{km_totali:,}".replace(',', '.'))
     
-    KM_BASE_EXCEL = 15000 # Costante usata nel tuo Excel per calcoli annui
+    KM_BASE_EXCEL = 15000 
 
-    # --- 4. IL MOTORE MATEMATICO (Le tue formule) ---
+    # --- 4. IL MOTORE MATEMATICO ---
     def esegui_calcoli(row):
         t = row["Tecnologia"]
-        p_fuel = next((v for k, v in costi_input.items() if k.lower() in t.lower()), 0.20)
+        # Ora p_fuel è puramente in €/kWh per qualsiasi carburante!
+        p_fuel = next((v for k, v in costi_input_kwh.items() if k.lower() in t.lower()), 0.20)
         
-        # COSTI
-        fuel_annuo = row["Consumo"] * km_annui * p_fuel          # V5
-        maint_annuo = row["Maint_km"] * km_annui                 # X5
-        capex_annuo = row["CAPEX_Totale"] / lifetime             # Y5
+        fuel_annuo = row["Consumo"] * km_annui * p_fuel          
+        maint_annuo = row["Maint_km"] * km_annui                 
+        capex_annuo = row["CAPEX_Totale"] / lifetime             
         
         fuel_totale = fuel_annuo * lifetime
         maint_totale = maint_annuo * lifetime
         
         costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
-        costo_tot_life = fuel_totale + maint_totale + row["CAPEX_Totale"] # AB5
+        costo_tot_life = fuel_totale + maint_totale + row["CAPEX_Totale"] 
         
-        # EMISSIONI ED ENERGIA
-        # Riproporzioniamo dai 15.000km standard ai km reali scelti
-        en_primaria = row["En_Primaria_Base"] * (km_annui / KM_BASE_EXCEL) # N5
-        emiss_annue = row["Emiss_Annue_Q"] * (km_annui / KM_BASE_EXCEL)    # Q5
+        en_primaria = row["En_Primaria_Base"] * (km_annui / KM_BASE_EXCEL) 
+        emiss_annue = row["Emiss_Annue_Q"] * (km_annui / KM_BASE_EXCEL)    
         
-        # S5 = (Costruzione + Annue * Lifetime) / 1000
         emiss_totali_tons = (row["Emiss_Costruz"] + (emiss_annue * lifetime)) / 1000
         
         return pd.Series([
@@ -130,10 +150,9 @@ try:
               'OPEx_Fuel_Tot', 'OPEx_Maint_Tot', 'Costo_Totale',
               'En_Primaria_y', 'Emiss_Annue', 'Emiss_Tot_Tons']] = df_clean.apply(esegui_calcoli, axis=1)
 
-    # --- 5. VISUALIZZAZIONE RISULTATI (8 Grafici in Griglia 2x4) ---
+    # --- 5. VISUALIZZAZIONE RISULTATI ---
     st.divider()
     
-    # RIGA 1: Autonomia e Consumo
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("1. Autonomia [km]")
@@ -144,11 +163,9 @@ try:
         fig2 = px.bar(df_clean, x="Tecnologia", y="Consumo", color="Tecnologia")
         st.plotly_chart(fig2, use_container_width=True)
 
-    # RIGA 2: Efficienza e Energia Primaria
     c3, c4 = st.columns(2)
     with c3:
         st.subheader("3. Efficienza WtW (η) [-]")
-        # Moltiplichiamo per 100 per avere la percentuale visibile nel grafico se il dato in Excel è es. 0.21
         df_clean["Eta_Percent"] = df_clean["Eta_WtW"] * 100 if df_clean["Eta_WtW"].mean() < 2 else df_clean["Eta_WtW"]
         fig3 = px.bar(df_clean, x="Tecnologia", y="Eta_Percent", color="Tecnologia", text_auto='.1f')
         fig3.update_layout(yaxis_title="Rendimento %")
@@ -158,7 +175,6 @@ try:
         fig4 = px.bar(df_clean, x="Tecnologia", y="En_Primaria_y", color="Tecnologia")
         st.plotly_chart(fig4, use_container_width=True)
 
-    # RIGA 3: Emissioni
     c5, c6 = st.columns(2)
     with c5:
         st.subheader("5. Emissioni Annue [kgCO2/anno]")
@@ -169,20 +185,18 @@ try:
         fig6 = px.bar(df_clean, x="Tecnologia", y="Emiss_Tot_Tons", color="Tecnologia")
         st.plotly_chart(fig6, use_container_width=True)
 
-    # RIGA 4: Costi (Stack CAPEx/OPEx)
     c7, c8 = st.columns(2)
     with c7:
         st.subheader("7. Costo Annuo [€/anno]")
         df_plot_y = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEx_y', 'OPEx_Maint_y', 'OPEx_Fuel_y'], 
                                   var_name="Voce", value_name="Euro")
-        df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_y':'CAPEx (Quota Acq.)', 'OPEx_Maint_y':'OPEx (Manut)', 'OPEx_Fuel_y':'OPEx (Fuel)'})
+        df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_y':'CAPEx (Acquisto)', 'OPEx_Maint_y':'OPEx (Manut)', 'OPEx_Fuel_y':'OPEx (Fuel)'})
         fig7 = px.bar(df_plot_y, x="Tecnologia", y="Euro", color="Voce", barmode='stack',
                       color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
         st.plotly_chart(fig7, use_container_width=True)
         
     with c8:
         st.subheader("8. Costo Totale (TCO) [€]")
-        # Usa il CAPEX intero (Costo Acquisto), OPEX Maint Totale e OPEX Fuel Totale
         df_clean['CAPEx_Totale_Bar'] = df_clean['CAPEX_Totale']
         df_plot_tot = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEx_Totale_Bar', 'OPEx_Maint_Tot', 'OPEx_Fuel_Tot'], 
                                     var_name="Voce", value_name="Euro")
@@ -191,7 +205,6 @@ try:
                       color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
         st.plotly_chart(fig8, use_container_width=True)
 
-    # --- TABELLA RIASSUNTIVA ---
     st.subheader("📋 Data Table Completa")
     st.dataframe(df_clean[["Tecnologia", "Autonomia", "Consumo", "Eta_WtW", "Costo_Annuo_Tot", "Costo_Totale", "Emiss_Tot_Tons"]].style.format({
         "Autonomia": "{:,.0f} km",
