@@ -16,12 +16,23 @@ if not os.path.exists(NOME_FILE_EXCEL):
 try:
     xl = pd.ExcelFile(NOME_FILE_EXCEL, engine='openpyxl')
     
-    # 1. SELEZIONE AUTOMATICA DEL FOGLIO
+    # --- IL FIX È QUI: RIPRISTINIAMO LA SELEZIONE MANUALE ---
     fogli_disponibili = xl.sheet_names
-    nome_foglio = next((f for f in fogli_disponibili if "riscaldam" in f.lower()), fogli_disponibili[0])
+    
+    # Cerchiamo di indovinare il foglio per comodità, ma ti lasciamo la scelta
+    indice_default = 0
+    for i, f in enumerate(fogli_disponibili):
+        if "riscaldam" in f.lower() or "edifici" in f.lower() or "calore" in f.lower():
+            indice_default = i
+            break
+            
+    st.sidebar.header("📂 Selezione Dati")
+    nome_foglio = st.sidebar.selectbox("Seleziona il foglio Excel", fogli_disponibili, index=indice_default)
     
     df_raw = pd.read_excel(xl, sheet_name=nome_foglio, header=None, engine='openpyxl')
 
+    # --- FUNZIONI SCUDO ---
+    # ... (il resto del codice rimane identico da qui in giù)
     # --- FUNZIONI SCUDO ---
     def safe_str(df, r, c):
         if r < len(df) and c < len(df.columns):
