@@ -42,7 +42,6 @@ try:
     # --- 2. ESTRAZIONE DATI BASE ---
     dati_finali = []
     
-    # Leggiamo le righe 4-15 filtrando le tecnologie non volute
     for i in range(3, 15):
         nome_tec = safe_str(df_raw, i, 1) 
         vettore = safe_str(df_raw, i, 4)  
@@ -68,7 +67,7 @@ try:
             dati_finali.append({
                 "Tecnologia": nome_display,                 
                 "Tec_Originale": nome_tec,                  
-                "Eta_COP_Base": safe_num(df_raw, i, 3),     # COLONNA D (Eta/COP)
+                "Eta_COP_Base": safe_num(df_raw, i, 3),     
                 "Consumo_Base": safe_num(df_raw, i, 5),     
                 "En_Prim_Base": safe_num(df_raw, i, 7),     
                 "WtW_Base": safe_num(df_raw, i, 11),        
@@ -84,6 +83,9 @@ try:
         st.stop()
 
     df_clean = pd.DataFrame(dati_finali)
+
+    # CREAZIONE ORDINE RIGIDO PER I GRAFICI (Esattamente come in Excel)
+    ordine_tecnologie = df_clean["Tecnologia"].tolist()
 
     fabbisogno_base_excel = safe_num(df_raw, 17, 9) 
     lifetime_base_excel = safe_num(df_raw, 18, 9)   
@@ -156,7 +158,6 @@ try:
             elif "verde" in t_full or "auto" in t_full: p_fuel_kwh = costi_input_kwh.get("idrogeno verde autoprodotto", 0.45)
             else: p_fuel_kwh = costi_input_kwh.get("idrogeno grigio", 0.06)
         
-        # DEFINIZIONE EFFICIENZA ATTIVA (Colonna D o Cursore)
         attivo_eta_cop = row["Eta_COP_Base"]
         if "pdc" in t_full: attivo_eta_cop = user_cop_aria
         if attivo_eta_cop == 0: attivo_eta_cop = 1.0 
@@ -173,7 +174,7 @@ try:
         costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
         
         return pd.Series([
-            en_primaria, attivo_eta_cop, wtw_annuo,  # Passiamo attivo_eta_cop invece del vecchio Eta_Processo
+            en_primaria, attivo_eta_cop, wtw_annuo, 
             fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
         ])
 
@@ -186,15 +187,16 @@ try:
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("1. Energia Primaria Richiesta [kWh/y]")
-        fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h')
+        fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h', 
+                      category_orders={"Tecnologia": ordine_tecnologie})
         fig1.update_yaxes(autorange="reversed", title_text="")
         fig1.update_layout(showlegend=False, height=450)
         st.plotly_chart(fig1, use_container_width=True)
         
     with c2:
         st.subheader("2. Efficienza della Macchina (η / COP)")
-        # Grafichiamo direttamente il valore puro (es. 0.92 o 3.20)
-        fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Attiva", color="Tecnologia", orientation='h', text_auto='.2f')
+        fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Attiva", color="Tecnologia", orientation='h', text_auto='.2f',
+                      category_orders={"Tecnologia": ordine_tecnologie})
         fig2.update_yaxes(autorange="reversed", title_text="")
         fig2.update_layout(xaxis_title="Valore Assoluto (η o COP)", showlegend=False, height=450)
         st.plotly_chart(fig2, use_container_width=True)
@@ -202,7 +204,8 @@ try:
     c3, c4 = st.columns(2)
     with c3:
         st.subheader("3. Emissioni WtW [kg CO2/anno]")
-        fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h')
+        fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h',
+                      category_orders={"Tecnologia": ordine_tecnologie})
         fig3.update_yaxes(autorange="reversed", title_text="")
         fig3.update_layout(showlegend=False, height=450)
         st.plotly_chart(fig3, use_container_width=True)
@@ -214,7 +217,8 @@ try:
         df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_Annuo':'CAPEx (Quota Acq.)', 'Maint_Annuo':'OPEx (Manut)', 'Fuel_Annuo':'OPEx (Vettore)'})
         
         fig4 = px.bar(df_plot_y, y="Tecnologia", x="Euro", color="Voce", orientation='h', barmode='stack',
-                      color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
+                      color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"],
+                      category_orders={"Tecnologia": ordine_tecnologie})
         fig4.update_yaxes(autorange="reversed", title_text="")
         fig4.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig4, use_container_width=True)
