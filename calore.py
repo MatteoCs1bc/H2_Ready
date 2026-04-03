@@ -10,7 +10,7 @@ st.title("🔥 DSS Comuni: Analisi Sistemi di Riscaldamento")
 # Legge il file README.md e lo visualizza in un menu a tendina
 if os.path.exists("ReadME_calore.md"):
     with st.expander("ℹ️ Leggi Istruzioni, Limiti e Assunzioni"):
-        with open("README.md", "r", encoding="utf-8") as f:
+        with open("ReadME_caloreE.md", "r", encoding="utf-8") as f:
             st.markdown(f.read())
 
 NOME_FILE_EXCEL = "Comparison H2 elc FF.xlsx" 
