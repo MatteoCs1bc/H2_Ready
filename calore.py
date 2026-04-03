@@ -16,7 +16,7 @@ if not os.path.exists(NOME_FILE_EXCEL):
 try:
     xl = pd.ExcelFile(NOME_FILE_EXCEL, engine='openpyxl')
     
-    # 1. SELEZIONE AUTOMATICA DEL FOGLIO (INVISIBILE)
+    # 1. SELEZIONE AUTOMATICA DEL FOGLIO
     fogli_disponibili = xl.sheet_names
     nome_foglio = next((f for f in fogli_disponibili if "riscaldam" in f.lower() or "edifici" in f.lower() or "calore" in f.lower()), fogli_disponibili[0])
     
@@ -42,11 +42,16 @@ try:
     # --- 2. ESTRAZIONE DATI BASE ---
     dati_finali = []
     
+    # Leggiamo le righe 4-15 ma filtriamo le tecnologie non volute
     for i in range(3, 15):
         nome_tec = safe_str(df_raw, i, 1) 
         vettore = safe_str(df_raw, i, 4)  
         
         if nome_tec == "" or nome_tec.lower() == "nan": 
+            continue
+            
+        # FILTRO: Escludiamo Geotermica e Riscaldamento Elettrico (Joule)
+        if "geotermica" in nome_tec.lower() or "joule" in nome_tec.lower() or "riscaldamento elettrico" in nome_tec.lower():
             continue
         
         tec_base = nome_tec
@@ -116,15 +121,13 @@ try:
             pass
 
     st.sidebar.divider()
-    st.sidebar.header("🌡️ Rendimenti PdC (COP)")
+    st.sidebar.header("🌡️ Rendimento Macchina")
     
     cop_aria_def = safe_num(df_raw, 27, 2)
     if cop_aria_def == 0: cop_aria_def = 3.2
-    cop_geo_def = safe_num(df_raw, 28, 2)
-    if cop_geo_def == 0: cop_geo_def = 4.5
     
-    user_cop_aria = st.sidebar.number_input("COP PdC Aria-H2O", value=float(cop_aria_def), step=0.1)
-    user_cop_geo = st.sidebar.number_input("COP PdC Geotermica", value=float(cop_geo_def), step=0.1)
+    # Rimosso il cursore del COP Geotermico per pulizia
+    user_cop_aria = st.sidebar.number_input("COP Pompa di Calore", value=float(cop_aria_def), step=0.1)
 
     st.sidebar.divider()
     st.sidebar.header("⚙️ Parametri Edificio")
@@ -138,7 +141,7 @@ try:
         min_value=1, max_value=30, value=int(max(1, lifetime_base_excel)), step=1
     )
 
-    # --- 4. MOTORE MATEMATICO (Alleggerito dai totali LCA/Lifetime) ---
+    # --- 4. MOTORE MATEMATICO ---
     def calcola_riscaldamento(row):
         t_full = row["Tecnologia"].lower()
         
@@ -146,7 +149,7 @@ try:
         if "gasolio" in t_full: p_fuel_kwh = costi_input_kwh.get("diesel", 0.18)
         elif "metano" in t_full: p_fuel_kwh = costi_input_kwh.get("metano", 0.10)
         elif "pellet" in t_full: p_fuel_kwh = costi_input_kwh.get("pellet", 0.06)
-        elif "elettrico" in t_full or "joule" in t_full or "pdc" in t_full or "geotermica" in t_full:
+        elif "pdc" in t_full:
             if "auto" in t_full or "pv" in t_full: p_fuel_kwh = costi_input_kwh.get("elettrico autoprodotto (pv)", 0.24)
             else: p_fuel_kwh = costi_input_kwh.get("elettrico da rete", 0.31)
         elif "idrogeno" in t_full:
@@ -156,8 +159,7 @@ try:
             else: p_fuel_kwh = costi_input_kwh.get("idrogeno grigio", 0.06)
         
         attivo_eta_cop = row["Eta_COP_Base"]
-        if "aria-h2o" in row["Tec_Originale"].lower() or ("pdc" in t_full and "geo" not in t_full): attivo_eta_cop = user_cop_aria
-        elif "geotermica" in t_full or "geo" in t_full: attivo_eta_cop = user_cop_geo
+        if "pdc" in t_full: attivo_eta_cop = user_cop_aria
         if attivo_eta_cop == 0: attivo_eta_cop = 1.0 
         
         consumo_vettore_kwh = user_fabbisogno / attivo_eta_cop
@@ -179,18 +181,15 @@ try:
     df_clean[['En_Primaria', 'Eta_Proc', 'WtW_Annuo',
               'Fuel_Annuo', 'Maint_Annuo', 'CAPEx_Annuo', 'Costo_Annuo_Tot']] = df_clean.apply(calcola_riscaldamento, axis=1)
 
-    # --- 5. VISUALIZZAZIONE RISULTATI (4 GRAFICI ORIZZONTALI) ---
+    # --- 5. VISUALIZZAZIONE RISULTATI ---
     st.divider()
     
-    # RIGA 1: Energia e Rendimento
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("1. Energia Primaria Richiesta [kWh/y]")
-        # GRAFICO ORIZZONTALE (orientation='h')
         fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h')
-        # Invertiamo l'asse Y per leggere dall'alto verso il basso e nascondiamo i titoli superflui
         fig1.update_yaxes(autorange="reversed", title_text="")
-        fig1.update_layout(showlegend=False, height=500)
+        fig1.update_layout(showlegend=False, height=450)
         st.plotly_chart(fig1, use_container_width=True)
         
     with c2:
@@ -198,16 +197,15 @@ try:
         df_clean["Eta_Perc"] = df_clean["Eta_Proc"] * 100 if df_clean["Eta_Proc"].mean() < 6 else df_clean["Eta_Proc"]
         fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Perc", color="Tecnologia", orientation='h', text_auto='.1f')
         fig2.update_yaxes(autorange="reversed", title_text="")
-        fig2.update_layout(xaxis_title="Rendimento %", showlegend=False, height=500)
+        fig2.update_layout(xaxis_title="Rendimento %", showlegend=False, height=450)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # RIGA 2: Emissioni e Costi
     c3, c4 = st.columns(2)
     with c3:
         st.subheader("3. Emissioni WtW [kg CO2/anno]")
         fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h')
         fig3.update_yaxes(autorange="reversed", title_text="")
-        fig3.update_layout(showlegend=False, height=500)
+        fig3.update_layout(showlegend=False, height=450)
         st.plotly_chart(fig3, use_container_width=True)
         
     with c4:
@@ -216,14 +214,13 @@ try:
                                   var_name="Voce", value_name="Euro")
         df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_Annuo':'CAPEx (Quota Acq.)', 'Maint_Annuo':'OPEx (Manut)', 'Fuel_Annuo':'OPEx (Vettore)'})
         
-        # Stacked bar orizzontale
         fig4 = px.bar(df_plot_y, y="Tecnologia", x="Euro", color="Voce", orientation='h', barmode='stack',
                       color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
         fig4.update_yaxes(autorange="reversed", title_text="")
-        fig4.update_layout(height=500, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig4.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig4, use_container_width=True)
 
-    # --- TABELLA RIASSUNTIVA PULITA ---
+    # --- TABELLA RIASSUNTIVA ---
     st.subheader("📋 Tabella Dati Analitici")
     st.dataframe(df_clean[["Tecnologia", "En_Primaria", "Eta_Perc", "WtW_Annuo", "Costo_Annuo_Tot"]].style.format({
         "En_Primaria": "{:,.0f} kWh",
