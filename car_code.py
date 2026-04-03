@@ -7,6 +7,12 @@ import os
 st.set_page_config(page_title="DSS Mobilità Comuni", page_icon="🚗", layout="wide")
 st.title("🚗 DSS Comuni: Analisi Completa Flotta")
 
+# Legge il file README.md e lo visualizza in un menu a tendina
+if os.path.exists("ReadMe_Mezzi.md"):
+    with st.expander("ℹ️ Leggi Istruzioni, Limiti e Assunzioni"):
+        with open("ReadMe_Mezzi.md", "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+
 NOME_FILE_EXCEL = "Comparison H2 elc FF.xlsx" 
 
 if not os.path.exists(NOME_FILE_EXCEL):
