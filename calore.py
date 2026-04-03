@@ -42,7 +42,7 @@ try:
     # --- 2. ESTRAZIONE DATI BASE ---
     dati_finali = []
     
-    # Leggiamo le righe 4-15 ma filtriamo le tecnologie non volute
+    # Leggiamo le righe 4-15 filtrando le tecnologie non volute
     for i in range(3, 15):
         nome_tec = safe_str(df_raw, i, 1) 
         vettore = safe_str(df_raw, i, 4)  
@@ -68,10 +68,9 @@ try:
             dati_finali.append({
                 "Tecnologia": nome_display,                 
                 "Tec_Originale": nome_tec,                  
-                "Eta_COP_Base": safe_num(df_raw, i, 3),     
+                "Eta_COP_Base": safe_num(df_raw, i, 3),     # COLONNA D (Eta/COP)
                 "Consumo_Base": safe_num(df_raw, i, 5),     
                 "En_Prim_Base": safe_num(df_raw, i, 7),     
-                "Eta_Processo": safe_num(df_raw, i, 8),     
                 "WtW_Base": safe_num(df_raw, i, 11),        
                 "Emiss_Costruz": safe_num(df_raw, i, 12),   
                 "Maint_Anno": safe_num(df_raw, i, 17),      
@@ -126,7 +125,6 @@ try:
     cop_aria_def = safe_num(df_raw, 27, 2)
     if cop_aria_def == 0: cop_aria_def = 3.2
     
-    # Rimosso il cursore del COP Geotermico per pulizia
     user_cop_aria = st.sidebar.number_input("COP Pompa di Calore", value=float(cop_aria_def), step=0.1)
 
     st.sidebar.divider()
@@ -158,6 +156,7 @@ try:
             elif "verde" in t_full or "auto" in t_full: p_fuel_kwh = costi_input_kwh.get("idrogeno verde autoprodotto", 0.45)
             else: p_fuel_kwh = costi_input_kwh.get("idrogeno grigio", 0.06)
         
+        # DEFINIZIONE EFFICIENZA ATTIVA (Colonna D o Cursore)
         attivo_eta_cop = row["Eta_COP_Base"]
         if "pdc" in t_full: attivo_eta_cop = user_cop_aria
         if attivo_eta_cop == 0: attivo_eta_cop = 1.0 
@@ -174,11 +173,11 @@ try:
         costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
         
         return pd.Series([
-            en_primaria, row["Eta_Processo"], wtw_annuo,
+            en_primaria, attivo_eta_cop, wtw_annuo,  # Passiamo attivo_eta_cop invece del vecchio Eta_Processo
             fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
         ])
 
-    df_clean[['En_Primaria', 'Eta_Proc', 'WtW_Annuo',
+    df_clean[['En_Primaria', 'Eta_Attiva', 'WtW_Annuo',
               'Fuel_Annuo', 'Maint_Annuo', 'CAPEx_Annuo', 'Costo_Annuo_Tot']] = df_clean.apply(calcola_riscaldamento, axis=1)
 
     # --- 5. VISUALIZZAZIONE RISULTATI ---
@@ -193,11 +192,11 @@ try:
         st.plotly_chart(fig1, use_container_width=True)
         
     with c2:
-        st.subheader("2. Efficienza di Processo (η)")
-        df_clean["Eta_Perc"] = df_clean["Eta_Proc"] * 100 if df_clean["Eta_Proc"].mean() < 6 else df_clean["Eta_Proc"]
-        fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Perc", color="Tecnologia", orientation='h', text_auto='.1f')
+        st.subheader("2. Efficienza della Macchina (η / COP)")
+        # Grafichiamo direttamente il valore puro (es. 0.92 o 3.20)
+        fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Attiva", color="Tecnologia", orientation='h', text_auto='.2f')
         fig2.update_yaxes(autorange="reversed", title_text="")
-        fig2.update_layout(xaxis_title="Rendimento %", showlegend=False, height=450)
+        fig2.update_layout(xaxis_title="Valore Assoluto (η o COP)", showlegend=False, height=450)
         st.plotly_chart(fig2, use_container_width=True)
 
     c3, c4 = st.columns(2)
@@ -220,11 +219,11 @@ try:
         fig4.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig4, use_container_width=True)
 
-    # --- TABELLA RIASSUNTIVA ---
+    # --- TABELLA RIASSUNTIVA PULITA ---
     st.subheader("📋 Tabella Dati Analitici")
-    st.dataframe(df_clean[["Tecnologia", "En_Primaria", "Eta_Perc", "WtW_Annuo", "Costo_Annuo_Tot"]].style.format({
+    st.dataframe(df_clean[["Tecnologia", "En_Primaria", "Eta_Attiva", "WtW_Annuo", "Costo_Annuo_Tot"]].style.format({
         "En_Primaria": "{:,.0f} kWh",
-        "Eta_Perc": "{:.1f} %",
+        "Eta_Attiva": "{:.2f}",
         "WtW_Annuo": "{:,.0f} kg",
         "Costo_Annuo_Tot": "€ {:,.0f}"
     }), use_container_width=True)
