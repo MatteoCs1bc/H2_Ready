@@ -8,13 +8,10 @@ st.set_page_config(page_title="DSS Comuni: Riscaldamento", page_icon="🔥", lay
 st.title("🔥 DSS Comuni: Analisi Sistemi di Riscaldamento")
 
 # Legge il file README.md e lo visualizza in un menu a tendina
-# TEST DI DEBUG
 if os.path.exists("ReadMe_calore.md"):
     with st.expander("ℹ️ Leggi Istruzioni, Limiti e Assunzioni"):
         with open("ReadMe_calore.md", "r", encoding="utf-8") as f:
             st.markdown(f.read())
-else:
-    st.sidebar.warning("⚠️ Attenzione: file README.md non trovato nella cartella principale!")
 
 NOME_FILE_EXCEL = "Comparison H2 elc FF.xlsx" 
 
