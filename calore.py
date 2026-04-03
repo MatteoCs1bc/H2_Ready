@@ -16,23 +16,12 @@ if not os.path.exists(NOME_FILE_EXCEL):
 try:
     xl = pd.ExcelFile(NOME_FILE_EXCEL, engine='openpyxl')
     
-    # --- IL FIX È QUI: RIPRISTINIAMO LA SELEZIONE MANUALE ---
+    # 1. SELEZIONE AUTOMATICA DEL FOGLIO (INVISIBILE)
     fogli_disponibili = xl.sheet_names
-    
-    # Cerchiamo di indovinare il foglio per comodità, ma ti lasciamo la scelta
-    indice_default = 0
-    for i, f in enumerate(fogli_disponibili):
-        if "riscaldam" in f.lower() or "edifici" in f.lower() or "calore" in f.lower():
-            indice_default = i
-            break
-            
-    st.sidebar.header("📂 Selezione Dati")
-    nome_foglio = st.sidebar.selectbox("Seleziona il foglio Excel", fogli_disponibili, index=indice_default)
+    nome_foglio = next((f for f in fogli_disponibili if "riscaldam" in f.lower() or "edifici" in f.lower() or "calore" in f.lower()), fogli_disponibili[0])
     
     df_raw = pd.read_excel(xl, sheet_name=nome_foglio, header=None, engine='openpyxl')
 
-    # --- FUNZIONI SCUDO ---
-    # ... (il resto del codice rimane identico da qui in giù)
     # --- FUNZIONI SCUDO ---
     def safe_str(df, r, c):
         if r < len(df) and c < len(df.columns):
@@ -53,6 +42,7 @@ try:
     # --- 2. ESTRAZIONE DATI BASE (Righe 4-15 -> Indici 3-14) ---
     dati_finali = []
     
+    # Estraiamo tutte e 12 le tecnologie senza filtri
     for i in range(3, 15):
         nome_tec = safe_str(df_raw, i, 1) # Colonna B
         
@@ -90,7 +80,7 @@ try:
     st.sidebar.header("⚡ Costi Vettore Energetico")
     
     costi_input_kwh = {} 
-    etichette_costi_letti = {} # Salva le etichette per l'abbinamento
+    etichette_costi_letti = {} 
     
     def get_unit_heat(t):
         t_low = t.lower()
@@ -109,7 +99,7 @@ try:
             val_natura = safe_num(df_raw, r, 2)     # C: Costo unità nativa
             val_kwh_excel = safe_num(df_raw, r, 5)  # F: Costo in €/kWh (da Excel)
             
-            # Fattore di conversione (es. da €/sacco a €/kWh)
+            # Fattore di conversione implicito dall'Excel
             fattore = (val_kwh_excel / val_natura) if val_natura > 0 else 1.0
                 
             etichetta_ui = f"{label} {get_unit_heat(label)}"
@@ -131,42 +121,62 @@ try:
     cop_geo_def = safe_num(df_raw, 28, 2)
     if cop_geo_def == 0: cop_geo_def = 4.5
     
-    # Cursori (+/-) per i COP
     user_cop_aria = st.sidebar.number_input("COP PdC Aria-H2O", value=float(cop_aria_def), step=0.1)
     user_cop_geo = st.sidebar.number_input("COP PdC Geotermica", value=float(cop_geo_def), step=0.1)
 
     st.sidebar.divider()
     st.sidebar.header("⚙️ Parametri Edificio (J18, J19)")
     
-    # Cursori a scorrimento (slider)
-    user_fabbisogno = st.sidebar.slider("Fabbisogno Termico [kWh_th/y]", min_value=10000, max_value=500000, value=int(fabbisogno_base_excel), step=5000)
-    user_lifetime = st.sidebar.slider("Vita Utile Impianto (y)", min_value=1, max_value=30, value=int(lifetime_base_excel), step=1)
+    # Cursori a scorrimento estesi fino a 2000 kWh/y
+    user_fabbisogno = st.sidebar.slider(
+        "Fabbisogno Termico [kWh_th/y]", 
+        min_value=2000, 
+        max_value=500000, 
+        value=int(max(2000, fabbisogno_base_excel)), 
+        step=1000
+    )
+    user_lifetime = st.sidebar.slider(
+        "Vita Utile Impianto (y)", 
+        min_value=1, 
+        max_value=30, 
+        value=int(max(1, lifetime_base_excel)), 
+        step=1
+    )
 
     # --- 4. IL MOTORE MATEMATICO ---
     def calcola_riscaldamento(row):
         t = row["Tecnologia"]
         t_low = t.lower()
         
-        # 1. Abbinamento Intelligente Combustibile -> Tecnologia
+        # 1. Abbinamento Intelligente Combustibile -> Tecnologia (rete vs auto)
         p_fuel_kwh = 0.10
-        if "gasolio" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("diesel", ""), 0.18)
-        elif "metano" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("metano", ""), 0.10)
-        elif "pellet" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("pellet", ""), 0.06)
-        elif "elettrico" in t_low or "pdc" in t_low or "aria-h2o" in t_low or "geotermica" in t_low:
-            if "autoprodotto" in t_low:
+        if "gasolio" in t_low: 
+            p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("diesel", ""), 0.18)
+        elif "metano" in t_low: 
+            p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("metano", ""), 0.10)
+        elif "pellet" in t_low: 
+            p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("pellet", ""), 0.06)
+        elif "elettrico" in t_low or "joule" in t_low or "pdc" in t_low or "aria-h2o" in t_low or "geotermica" in t_low:
+            if "auto" in t_low or "pv" in t_low:
                 p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("elettrico autoprodotto (pv)", ""), 0.24)
             else:
                 p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("elettrico da rete", ""), 0.31)
         elif "idrogeno" in t_low:
-            if "grigio" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno grigio", ""), 0.06)
-            elif "rete" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno da rete", ""), 0.60)
-            elif "verde" in t_low or "autoprodotto" in t_low: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno verde autoprodotto", ""), 0.45)
-            else: p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno grigio", ""), 0.06)
+            if "grigio" in t_low: 
+                p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno grigio", ""), 0.06)
+            elif "rete" in t_low: 
+                p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno da rete", ""), 0.60)
+            elif "verde" in t_low or "auto" in t_low: 
+                p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno verde autoprodotto", ""), 0.45)
+            else: 
+                p_fuel_kwh = costi_input_kwh.get(etichette_costi_letti.get("idrogeno grigio", ""), 0.06)
         
         # 2. Definisci il rendimento/COP
         attivo_eta_cop = row["Eta_COP_Base"]
-        if "aria-h2o" in t_low: attivo_eta_cop = user_cop_aria
-        elif "geotermica" in t_low: attivo_eta_cop = user_cop_geo
+        if "aria-h2o" in t_low or ("pdc" in t_low and "geo" not in t_low):
+            attivo_eta_cop = user_cop_aria
+        elif "geotermica" in t_low or "geo" in t_low:
+            attivo_eta_cop = user_cop_geo
         
         if attivo_eta_cop == 0: attivo_eta_cop = 1.0 
         
@@ -207,12 +217,14 @@ try:
     with c1:
         st.subheader("1. Energia Primaria Richiesta [kWh/y]")
         fig1 = px.bar(df_clean, x="Tecnologia", y="En_Primaria", color="Tecnologia")
+        # Rotazione etichette per evitare sovrapposizioni con 12 tecnologie
+        fig1.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig1, use_container_width=True)
     with c2:
         st.subheader("2. Efficienza di Processo (η)")
-        df_clean["Eta_Perc"] = df_clean["Eta_Proc"] * 100 if df_clean["Eta_Proc"].mean() < 3 else df_clean["Eta_Proc"]
+        df_clean["Eta_Perc"] = df_clean["Eta_Proc"] * 100 if df_clean["Eta_Proc"].mean() < 6 else df_clean["Eta_Proc"]
         fig2 = px.bar(df_clean, x="Tecnologia", y="Eta_Perc", color="Tecnologia", text_auto='.1f')
-        fig2.update_layout(yaxis_title="Rendimento %")
+        fig2.update_layout(yaxis_title="Rendimento %", xaxis_tickangle=-45)
         st.plotly_chart(fig2, use_container_width=True)
 
     # RIGA 2: Emissioni
@@ -220,10 +232,12 @@ try:
     with c3:
         st.subheader("3. Emissioni WtW [kg CO2/anno]")
         fig3 = px.bar(df_clean, x="Tecnologia", y="WtW_Annuo", color="Tecnologia")
+        fig3.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig3, use_container_width=True)
     with c4:
         st.subheader("4. Emissioni Totali LCA [t CO2]")
         fig4 = px.bar(df_clean, x="Tecnologia", y="Emiss_Tot_LCA", color="Tecnologia")
+        fig4.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig4, use_container_width=True)
 
     # RIGA 3: Costi
@@ -235,6 +249,7 @@ try:
         df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_Annuo':'CAPEx (Quota Acq.)', 'Maint_Annuo':'OPEx (Manut)', 'Fuel_Annuo':'OPEx (Vettore)'})
         fig5 = px.bar(df_plot_y, x="Tecnologia", y="Euro", color="Voce", barmode='stack',
                       color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
+        fig5.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig5, use_container_width=True)
         
     with c6:
@@ -245,6 +260,7 @@ try:
         df_plot_tot["Voce"] = df_plot_tot["Voce"].replace({'CAPEx_Acquisto':'CAPEx (Investimento)', 'Maint_Tot':'OPEx (Manut)', 'Fuel_Tot':'OPEx (Vettore)'})
         fig6 = px.bar(df_plot_tot, x="Tecnologia", y="Euro", color="Voce", barmode='stack',
                       color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"])
+        fig6.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig6, use_container_width=True)
 
     # --- TABELLA RIASSUNTIVA ---
