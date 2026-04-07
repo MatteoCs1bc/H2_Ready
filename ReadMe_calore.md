@@ -32,7 +32,7 @@ VETTORI ENERGETICI
 ⚡ L'energia elettrica può provenire da due fonti principali, con impatti economici e ambientali molto diversi:  
 - Elettrico da Rete: L'energia viene prelevata interamente dalla rete nazionale. Il costo è tipicamente più elevato (soggetto a oneri di sistema e fluttuazioni del mercato), e le emissioni dipendono dal "mix energetico" nazionale (quota di rinnovabili rispetto ai combustibili fossili nelle centrali termoelettriche).  
 - Elettrico Autoprodotto (PV): L'energia è generata localmente, tipicamente da pannelli fotovoltaici.Vantaggio Economico: Abbate drasticamente il costo del kWh (si paga solo l'ammortamento dell'impianto solare).Vantaggio Ambientale: Le emissioni operative sono quasi nulle.
-- 
+  
 🔥 Per i sistemi a combustione, l'approvvigionamento segue logiche di mercato e infrastrutturali:  
 - Metano (Rete): È l'approvvigionamento standard tramite infrastruttura cittadina. Ha un costo moderato e un'impronta carbonica fissa legata alla combustione del gas fossile.  
 - Biomassa legonsa (Pellet): L'approvvigionamento è "puntuale" (acquisto di sacchi o bancali). Sebbene emetta $CO_2$ alla combustione, è considerata neutra o a basse emissioni nel computo globale perché il carbonio emesso è quello assorbito dalla pianta durante la crescita.  
