@@ -75,7 +75,10 @@ try:
                 "Tec_Originale": nome_tec,                  
                 "Eta_COP_Base": safe_num(df_raw, i, 3),     
                 "Consumo_Base": safe_num(df_raw, i, 5),     
-                "En_Prim_Base": safe_num(df_raw, i, 7),     
+                "En_Prim_Base": safe_num(df_raw, i, 7),
+                # INSERISCI QUI GLI INDICI CORRETTI DELLE COLONNE EXCEL PER WtT e TtW:
+                "WtT_Base": safe_num(df_raw, i, 9),    # Esempio: 9 = Colonna J
+                "TtW_Base": safe_num(df_raw, i, 10),   # Esempio: 10 = Colonna K
                 "WtW_Base": safe_num(df_raw, i, 11),        
                 "Emiss_Costruz": safe_num(df_raw, i, 12),   
                 "Maint_Anno": safe_num(df_raw, i, 17),      
@@ -173,6 +176,22 @@ try:
         
         en_primaria = row["En_Prim_Base"] * fattore_scala
         wtw_annuo = row["WtW_Base"] * fattore_scala
+        wtt_annuo = row["WtT_Base"] * fattore_scala  # NUOVO
+        ttw_annuo = row["TtW_Base"] * fattore_scala  # NUOVO
+        
+        fuel_annuo = consumo_vettore_kwh * p_fuel_kwh
+        maint_annuo = row["Maint_Anno"] 
+        capex_annuo = row["CAPEX_Totale"] / user_lifetime
+        costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
+        
+        return pd.Series([
+            en_primaria, attivo_eta_cop, wtw_annuo, wtt_annuo, ttw_annuo, 
+            fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
+        ])
+
+    # Aggiorna l'assegnazione delle colonne per includere WtT_Annuo e TtW_Annuo
+    df_clean[['En_Primaria', 'Eta_Attiva', 'WtW_Annuo', 'WtT_Annuo', 'TtW_Annuo',
+              'Fuel_Annuo', 'Maint_Annuo', 'CAPEx_Annuo', 'Costo_Annuo_Tot']] = df_clean.apply(calcola_riscaldamento, axis=1)
         
         fuel_annuo = consumo_vettore_kwh * p_fuel_kwh
         maint_annuo = row["Maint_Anno"] 
@@ -206,12 +225,26 @@ try:
     fig2.update_layout(xaxis_title="Valore Assoluto (η o COP)", showlegend=False, height=400)
     st.plotly_chart(fig2, use_container_width=True)
 
-    # 3. Emissioni
-    st.subheader("3. Emissioni WtW [kg CO2/anno]")
-    fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h',
+    # 3. Emissioni WtT e TtW
+    st.subheader("3. Emissioni (WtT + TtW) [kg CO2/anno]")
+    
+    # Ristruttura il dataframe per il grafico a barre impilate
+    df_plot_emiss = df_clean.melt(id_vars="Tecnologia", value_vars=['WtT_Annuo', 'TtW_Annuo'], 
+                                  var_name="Fase", value_name="Emissioni")
+    
+    # Rinomina le etichette per la legenda
+    df_plot_emiss["Fase"] = df_plot_emiss["Fase"].replace({
+        'WtT_Annuo': 'WtT (Estrazione e Trasporto)', 
+        'TtW_Annuo': 'TtW (Combustione Locale)'
+    })
+    
+    fig3 = px.bar(df_plot_emiss, y="Tecnologia", x="Emissioni", color="Fase", orientation='h', barmode='stack',
+                  color_discrete_sequence=["#8B4513", "#CD5C5C"], # Colori: Marrone (WtT) e Rosso tenue (TtW)
                   category_orders={"Tecnologia": ordine_tecnologie})
+                  
     fig3.update_yaxes(autorange="reversed", title_text="")
-    fig3.update_layout(showlegend=False, height=400)
+    # Posiziona la legenda in alto per mantenere le proporzioni del grafico pulite
+    fig3.update_layout(height=400, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig3, use_container_width=True)
     
     # 4. Costo Annuo
