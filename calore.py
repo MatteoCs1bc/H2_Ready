@@ -119,7 +119,7 @@ try:
         costi_input_kwh[label.lower()] = user_val * fattore
 
     user_cop_aria = st.sidebar.number_input("COP Pompa di Calore", value=float(safe_num(df_raw, 27, 2) or 3.2), step=0.1)
-    user_fabbisogno = st.sidebar.slider("Fabbisogno Termico [kWh/y]", 2000, 500000, int(fabbisogno_base_excel), 1000)
+    user_fabbisogno = st.sidebar.slider("Fabbisogno Termico [kWh/y]", 2000, 50000, int(fabbisogno_base_excel), 1000)
     user_lifetime = st.sidebar.slider("Vita Utile (y)", 1, 30, int(lifetime_base_excel), 1)
 
     # --- MOTORE MATEMATICO ---
@@ -173,7 +173,7 @@ try:
     # --- GRAFICI ---
     st.divider()
     
-    st.subheader("1. Energia Primaria Richiesta [kWh/y]")
+    st.subheader("1. Energia Primaria Richiesta per soddisfare il fabbisogno richiesto pari a "user_fabbisogno" [kWh/y]")
     fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h', category_orders={"Tecnologia": ordine_tecnologie})
     fig1.update_yaxes(autorange="reversed", title_text=""); fig1.update_xaxes(title_text="")
     fig1.update_layout(showlegend=False, height=400)
