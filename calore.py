@@ -173,7 +173,7 @@ try:
     # --- GRAFICI ---
     st.divider()
     
-    st.subheader("1. Energia Primaria Richiesta per soddisfare il fabbisogno richiesto pari a "user_fabbisogno" [kWh/y]")
+    st.subheader("1. Energia Primaria Richiesta per soddisfare il fabbisogno richiesto pari a 'user_fabbisogno' [kWh/y]")
     fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h', category_orders={"Tecnologia": ordine_tecnologie})
     fig1.update_yaxes(autorange="reversed", title_text=""); fig1.update_xaxes(title_text="")
     fig1.update_layout(showlegend=False, height=400)
