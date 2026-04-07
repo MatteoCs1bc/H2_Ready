@@ -201,7 +201,7 @@ try:
     return pd.Series([
         en_primaria, attivo_eta_cop, wtw_annuo, 
         fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
-        ])
+    ])
 
     df_clean[['En_Primaria', 'Eta_Attiva', 'WtW_Annuo',
               'Fuel_Annuo', 'Maint_Annuo', 'CAPEx_Annuo', 'Costo_Annuo_Tot']] = df_clean.apply(calcola_riscaldamento, axis=1)
