@@ -190,44 +190,42 @@ try:
     # --- 5. VISUALIZZAZIONE RISULTATI ---
     st.divider()
     
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("1. Energia Primaria Richiesta [kWh/y]")
-        fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h', 
-                      category_orders={"Tecnologia": ordine_tecnologie})
-        fig1.update_yaxes(autorange="reversed", title_text="")
-        fig1.update_layout(showlegend=False, height=450)
-        st.plotly_chart(fig1, use_container_width=True)
-        
-    with c2:
-        st.subheader("2. Efficienza della Macchina (η / COP)")
-        fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Attiva", color="Tecnologia", orientation='h', text_auto='.2f',
-                      category_orders={"Tecnologia": ordine_tecnologie})
-        fig2.update_yaxes(autorange="reversed", title_text="")
-        fig2.update_layout(xaxis_title="Valore Assoluto (η o COP)", showlegend=False, height=450)
-        st.plotly_chart(fig2, use_container_width=True)
+    # 1. Energia Primaria
+    st.subheader("1. Energia Primaria Richiesta [kWh/y]")
+    fig1 = px.bar(df_clean, y="Tecnologia", x="En_Primaria", color="Tecnologia", orientation='h', 
+                  category_orders={"Tecnologia": ordine_tecnologie})
+    fig1.update_yaxes(autorange="reversed", title_text="")
+    fig1.update_layout(showlegend=False, height=400)
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # 2. Efficienza
+    st.subheader("2. Efficienza della Macchina (η / COP)")
+    fig2 = px.bar(df_clean, y="Tecnologia", x="Eta_Attiva", color="Tecnologia", orientation='h', text_auto='.2f',
+                  category_orders={"Tecnologia": ordine_tecnologie})
+    fig2.update_yaxes(autorange="reversed", title_text="")
+    fig2.update_layout(xaxis_title="Valore Assoluto (η o COP)", showlegend=False, height=400)
+    st.plotly_chart(fig2, use_container_width=True)
 
-    c3, c4 = st.columns(2)
-    with c3:
-        st.subheader("3. Emissioni WtW [kg CO2/anno]")
-        fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h',
-                      category_orders={"Tecnologia": ordine_tecnologie})
-        fig3.update_yaxes(autorange="reversed", title_text="")
-        fig3.update_layout(showlegend=False, height=450)
-        st.plotly_chart(fig3, use_container_width=True)
-        
-    with c4:
-        st.subheader("4. Costo Annuo (TCO/y) [€/anno]")
-        df_plot_y = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEx_Annuo', 'Maint_Annuo', 'Fuel_Annuo'], 
+    # 3. Emissioni
+    st.subheader("3. Emissioni WtW [kg CO2/anno]")
+    fig3 = px.bar(df_clean, y="Tecnologia", x="WtW_Annuo", color="Tecnologia", orientation='h',
+                  category_orders={"Tecnologia": ordine_tecnologie})
+    fig3.update_yaxes(autorange="reversed", title_text="")
+    fig3.update_layout(showlegend=False, height=400)
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    # 4. Costo Annuo
+    st.subheader("4. Costo Annuo (TCO/y) [€/anno]")
+    df_plot_y = df_clean.melt(id_vars="Tecnologia", value_vars=['CAPEx_Annuo', 'Maint_Annuo', 'Fuel_Annuo'], 
                                   var_name="Voce", value_name="Euro")
-        df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_Annuo':'CAPEx (Quota Acq.)', 'Maint_Annuo':'OPEx (Manut)', 'Fuel_Annuo':'OPEx (Vettore)'})
-        
-        fig4 = px.bar(df_plot_y, y="Tecnologia", x="Euro", color="Voce", orientation='h', barmode='stack',
-                      color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"],
-                      category_orders={"Tecnologia": ordine_tecnologie})
-        fig4.update_yaxes(autorange="reversed", title_text="")
-        fig4.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig4, use_container_width=True)
+    df_plot_y["Voce"] = df_plot_y["Voce"].replace({'CAPEx_Annuo':'CAPEx (Quota Acq.)', 'Maint_Annuo':'OPEx (Manut)', 'Fuel_Annuo':'OPEx (Vettore)'})
+    
+    fig4 = px.bar(df_plot_y, y="Tecnologia", x="Euro", color="Voce", orientation='h', barmode='stack',
+                  color_discrete_sequence=["#0068C9", "#FFA421", "#FF4B4B"],
+                  category_orders={"Tecnologia": ordine_tecnologie})
+    fig4.update_yaxes(autorange="reversed", title_text="")
+    fig4.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    st.plotly_chart(fig4, use_container_width=True)
 
     # --- TABELLA RIASSUNTIVA PULITA ---
     st.subheader("📋 Tabella Dati Analitici")
