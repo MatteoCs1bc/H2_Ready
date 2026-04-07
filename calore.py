@@ -198,9 +198,9 @@ try:
     capex_annuo = row["CAPEX_Totale"] / user_lifetime
     costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
         
-        return pd.Series([
-            en_primaria, attivo_eta_cop, wtw_annuo, 
-            fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
+    return pd.Series([
+        en_primaria, attivo_eta_cop, wtw_annuo, 
+        fuel_annuo, maint_annuo, capex_annuo, costo_annuo_tot
         ])
 
     df_clean[['En_Primaria', 'Eta_Attiva', 'WtW_Annuo',
