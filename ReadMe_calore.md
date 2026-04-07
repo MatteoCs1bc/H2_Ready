@@ -27,6 +27,7 @@ DESCRIZIONE OUTPUT
 - Emissioni WtW (Well-to-Wheel): Misura l'impatto climatico espresso in $kg$ di $CO_2$ equivalente. L'approccio "Well-to-Wheel" (dal pozzo alla ruota) non considera solo le emissioni allo scarico del camino, ma include anche quelle generate durante l'estrazione, la raffinazione e il trasporto del combustibile o la produzione dell'energia elettrica.
 - Costo Annuo (TCO/y): È il "Costo Totale di Possesso" annualizzato. Somma tre componenti: la quota di ammortamento dell'investimento iniziale (CAPEX), i costi di manutenzione ordinaria e il costo variabile legato all'acquisto del combustibile o dell'elettricità (OPEX). Permette un confronto economico reale tra tecnologie con costi d'acquisto diversi.
 
+VETTORI ENERGETICI
 ⚡ Vettori Elettrici
 L'energia elettrica può provenire da due fonti principali, con impatti economici e ambientali molto diversi:  
 Elettrico da Rete: L'energia viene prelevata interamente dalla rete nazionale. Il costo è tipicamente più elevato (soggetto a oneri di sistema e fluttuazioni del mercato), e le emissioni dipendono dal "mix energetico" nazionale (quota di rinnovabili rispetto ai combustibili fossili nelle centrali termoelettriche).  
