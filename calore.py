@@ -193,10 +193,10 @@ try:
     df_clean[['En_Primaria', 'Eta_Attiva', 'WtW_Annuo', 'WtT_Annuo', 'TtW_Annuo',
               'Fuel_Annuo', 'Maint_Annuo', 'CAPEx_Annuo', 'Costo_Annuo_Tot']] = df_clean.apply(calcola_riscaldamento, axis=1)
         
-            fuel_annuo = consumo_vettore_kwh * p_fuel_kwh
-            maint_annuo = row["Maint_Anno"] 
-            capex_annuo = row["CAPEX_Totale"] / user_lifetime
-            costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
+    fuel_annuo = consumo_vettore_kwh * p_fuel_kwh
+    maint_annuo = row["Maint_Anno"] 
+    capex_annuo = row["CAPEX_Totale"] / user_lifetime
+    costo_annuo_tot = fuel_annuo + maint_annuo + capex_annuo
         
         return pd.Series([
             en_primaria, attivo_eta_cop, wtw_annuo, 
