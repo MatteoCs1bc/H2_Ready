@@ -1,4 +1,4 @@
-STRUMENTO RISCALDAMENTO
+STRUMENTO RISCALDAMENTO  
 Analisi comparativa per la sostituzione di caldaie e impianti termici negli edifici pubblici.    
 
 FUNZIONAMENTO  
